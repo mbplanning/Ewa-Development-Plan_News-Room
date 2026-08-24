@@ -2,3 +2,6 @@
 Thumbs.db
 desktop.ini
 *.log
+.venv/
+__pycache__/
+uploads/

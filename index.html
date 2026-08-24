@@ -3,75 +3,32 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ʻEwa Development Plan</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,640&family=Source+Sans+3:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="vendor/leaflet.css">
-  <link rel="stylesheet" href="css/dashboard.css">
+  <title>ʻEwa Development Plan News Room</title>
+  <link rel="stylesheet" href="css/newsroom.css">
 </head>
 <body>
-  <a class="skip-link" href="#board">Skip to projects</a>
-
   <header class="site-header">
-    <div class="brand">
-      <p class="eyebrow">Community project &amp; news intelligence</p>
-      <h1>ʻEwa Development Plan</h1>
+    <img class="logo" src="assets/ewa-dp-logo.png" alt="ʻEwa Development Plan">
+    <div class="header-text">
+      <h1>ʻEwa Development Plan News Room</h1>
     </div>
-    <label class="search-label">
-      <span class="visually-hidden">Search projects, places, agencies, and sources</span>
-      <input id="search" type="search" placeholder="Search projects, places, agencies, sources…" autocomplete="off">
-    </label>
   </header>
 
-  <div class="filter-bar" id="filter-bar"></div>
-
-  <nav class="mobile-tabs" aria-label="Views">
-    <button type="button" data-view="board" class="is-active">Board</button>
-    <button type="button" data-view="map">Map</button>
-    <button type="button" data-view="timeline">Timeline</button>
-  </nav>
-
-  <main class="layout" data-view="board">
-    <section class="map-pane" id="map-pane" aria-label="Map">
-      <div id="map"></div>
-      <div class="map-legend" id="map-legend"></div>
-    </section>
-
-    <section class="board-pane" id="board-pane" aria-label="Project board">
-      <div class="board-head">
-        <h2>Projects &amp; issues</h2>
-        <p class="result-count" id="result-count"></p>
-      </div>
-      <div id="board"></div>
-    </section>
-
-    <section class="timeline-pane" id="timeline-pane" aria-label="Timeline">
-      <div class="timeline-head">
-        <div>
-          <h2>Timeline</h2>
-          <p class="timeline-range" id="timeline-range"></p>
-        </div>
-        <div class="timeline-key" aria-hidden="true">
-          <span class="key actual">Occurred</span>
-          <span class="key confirmed">Confirmed date</span>
-          <span class="key estimated">Estimated / anticipated</span>
-        </div>
-      </div>
-      <div class="timeline-scroll" id="timeline-scroll">
-        <div class="timeline-track" id="timeline-track"></div>
-      </div>
+  <main class="page">
+    <section class="news-column" aria-label="Recent news">
+      <h2>Recent news</h2>
+      <form id="upload-form" class="upload-box" enctype="multipart/form-data">
+        <p class="upload-label">Upload</p>
+        <input id="upload-file" type="file" name="file" accept=".pdf,.docx,.txt,.md,.text" required>
+        <input id="upload-headline" type="text" name="headline" placeholder="Optional title">
+        <button type="submit">Add news</button>
+        <p id="upload-status" class="upload-status" hidden></p>
+      </form>
+      <ul id="news-list"></ul>
     </section>
   </main>
 
-  <p class="footnote" id="footnote"></p>
-
-  <script src="vendor/leaflet.js"></script>
   <script src="data/projects.js"></script>
-  <script src="js/utils.js"></script>
-  <script src="js/board.js"></script>
-  <script src="js/map.js"></script>
-  <script src="js/timeline.js"></script>
-  <script src="js/app.js"></script>
+  <script src="js/news.js"></script>
 </body>
 </html>

@@ -5,7 +5,29 @@ alwaysApply: true
 
 # ʻEwa DP dashboard
 
-Display-only site: `index.html`. Structured data lives in `data/projects.js` as `window.EWA_DP_DATA`. Never add entry forms, logins, or admin UI.
+News Room site: `index.html`, served by `server.py` for internal team use.
+
+Structured news lives in `data/news.json`. Project records may also live in `data/projects.js` as `window.EWA_DP_DATA`.
+
+No logins. An internal **Upload** form is allowed so people with the team link can add a PDF, Word, or text file as a new Needs review entry. Do not add a public-facing CMS, accounts, or City/DPP branding.
+
+## Ingest (mandatory)
+
+When the user drops files in `ewa-dp-inbox/`, attaches a source, pastes a URL, or asks to import / ingest / add / tag material:
+
+1. Read the source. Do not invent facts. If a date, place, agency, or completion is not in the source, leave it blank or "Not identified".
+2. Match an existing project when it is the same effort under a different name. Create a new project only when it is truly separate.
+3. Propose project tags (reuse existing tags when they fit).
+4. **Stop. Show the proposed tags and ask the user to confirm, remove, add, or revise them. Do not write `data/projects.js` or `data/news.json` until they confirm.** Exception: files posted through the internal Upload form may be saved immediately as Needs review stubs.
+5. After confirmation, add a dated update and a separate source under the project. Use new stable IDs (`proj-`, `upd-`, `src-`, `st-`, `ms-`, `geom-`).
+6. If status, decision, schedule, funding, scope, location, or responsible party changed, append status history and milestones. Never overwrite old chapters.
+7. Update current status from the newest reliable source. Keep conflicts visible.
+8. Add map geometry only when the source supports it. Mark uncertain locations `approximate`.
+9. Set `needsReview: true` and `status: "Needs review"` on new/changed records. Set `sourceType` to Link, PDF, Word, or Text.
+10. Skip ingest if a card already has the same `sourceUrl` or `sourceFile`.
+11. Tell the user to refresh the HTML board, review Needs review cards, and say what to fix.
+
+A reversal, delay, redesign, funding change, approval, denial, or party change is a new history chapter on the same project — not a silent replace and not a duplicate project.
 
 ## Ingest (mandatory)
 

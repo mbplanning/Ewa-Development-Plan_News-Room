@@ -1,0 +1,7 @@
+Drop a PDF, Word (.docx), or text file here, then in the Cursor chat say:
+  import this
+
+Or attach the file / paste text in the chat.
+
+The News Room page will be updated after the source is read and tagged.
+Do not add City and County of Honolulu or DPP branding. This is a working log, not an official product.
