@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>News entry · ʻEwa Development Plan News Room</title>
+  <link rel="stylesheet" href="css/newsroom.css">
+</head>
+<body>
+  <header class="site-header">
+    <img class="logo" src="assets/ewa-dp-logo.png" alt="ʻEwa Development Plan">
+    <div class="header-text">
+      <h1>ʻEwa Development Plan News Room</h1>
+    </div>
+  </header>
+
+  <main class="page entry-page">
+    <p class="back-link"><a href="index.html">← Back to News Room</a></p>
+    <h2 id="entry-heading">New news entry</h2>
+    <p class="entry-lead">Review the fields pulled from the document. Edit anything that is wrong or blank, then save.</p>
+    <p id="entry-status" class="upload-status" hidden></p>
+
+    <form id="entry-form" class="entry-form">
+      <input type="hidden" name="draftId" id="field-draftId">
+      <input type="hidden" name="id" id="field-id">
+      <input type="hidden" name="sourceType" id="field-sourceType">
+      <input type="hidden" name="sourceFile" id="field-sourceFile">
+
+      <label>
+        1. Title of the document
+        <input type="text" name="headline" id="field-headline" required>
+      </label>
+
+      <label>
+        2. Source
+        <input type="text" name="source" id="field-source" placeholder="News outlet or government newsletter">
+      </label>
+
+      <div class="field-row">
+        <label>
+          3. Location
+          <input type="text" name="place" id="field-place" placeholder="Site, road, or region">
+        </label>
+        <label>
+          Location type
+          <select name="locationType" id="field-locationType">
+            <option value="">Not identified</option>
+            <option value="point">Point / site</option>
+            <option value="road">Road</option>
+            <option value="region">Region</option>
+          </select>
+        </label>
+      </div>
+
+      <label>
+        4. News summary
+        <textarea name="summary" id="field-summary" rows="3" placeholder="One sentence: what happened"></textarea>
+      </label>
+
+      <label>
+        5. Timeline / expected completion
+        <input type="text" name="timeline" id="field-timeline" placeholder="Leave blank if not identified">
+      </label>
+
+      <label>
+        6. Government parties
+        <input type="text" name="governmentParties" id="field-governmentParties" placeholder="Agencies; separate with semicolons">
+      </label>
+
+      <label>
+        Non-government parties
+        <input type="text" name="otherParties" id="field-otherParties" placeholder="Developers, landowners, and others">
+      </label>
+
+      <label>
+        7. Link
+        <input type="text" name="sourceUrl" id="field-sourceUrl" placeholder="https://">
+      </label>
+
+      <label>
+        Date
+        <input type="date" name="date" id="field-date">
+      </label>
+
+      <label class="archive-check">
+        <input type="checkbox" name="archived" id="field-archived">
+        8. Archive — this news is no longer relevant
+      </label>
+
+      <div class="entry-actions">
+        <button type="submit">Save and submit</button>
+        <a class="button-secondary" href="index.html">Cancel</a>
+      </div>
+    </form>
+
+    <section id="excerpt-box" class="excerpt-box" hidden>
+      <h3>From the document</h3>
+      <p id="excerpt-text"></p>
+    </section>
+  </main>
+
+  <script src="js/entry.js"></script>
+</body>
+</html>

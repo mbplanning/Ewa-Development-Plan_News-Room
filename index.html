@@ -8,22 +8,28 @@
 </head>
 <body>
   <header class="site-header">
-    <img class="logo" src="assets/ewa-dp-logo.png" alt="ʻEwa Development Plan">
-    <div class="header-text">
-      <h1>ʻEwa Development Plan News Room</h1>
+    <div class="header-brand">
+      <img class="logo" src="assets/ewa-dp-logo.png" alt="ʻEwa Development Plan">
+      <div class="header-text">
+        <h1>ʻEwa Development Plan News Room</h1>
+      </div>
     </div>
+    <form id="upload-form" class="upload-box" enctype="multipart/form-data">
+      <p class="upload-label">Upload</p>
+      <input id="upload-file" type="file" name="file" accept=".pdf,.docx,.txt,.md,.text" required>
+      <input id="upload-link" type="text" name="sourceUrl" placeholder="Optional link">
+      <button type="submit">Review news</button>
+      <p id="upload-status" class="upload-status" hidden></p>
+    </form>
   </header>
 
   <main class="page">
     <section class="news-column" aria-label="Recent news">
       <h2>Recent news</h2>
-      <form id="upload-form" class="upload-box" enctype="multipart/form-data">
-        <p class="upload-label">Upload</p>
-        <input id="upload-file" type="file" name="file" accept=".pdf,.docx,.txt,.md,.text" required>
-        <input id="upload-headline" type="text" name="headline" placeholder="Optional title">
-        <button type="submit">Add news</button>
-        <p id="upload-status" class="upload-status" hidden></p>
-      </form>
+      <label class="show-archived">
+        <input type="checkbox" id="show-archived">
+        Show archived
+      </label>
       <ul id="news-list"></ul>
     </section>
   </main>

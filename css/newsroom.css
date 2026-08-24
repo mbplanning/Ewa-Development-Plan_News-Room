@@ -20,10 +20,19 @@ html, body {
 .site-header {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  justify-content: space-between;
+  gap: 1.25rem;
   padding: 0.85rem 1.25rem;
   border-bottom: 3px solid var(--navy);
   background: #fff;
+}
+
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .logo {
@@ -135,6 +144,17 @@ html, body {
   color: var(--grey);
 }
 
+@media (max-width: 900px) {
+  .site-header {
+    flex-wrap: wrap;
+  }
+
+  .site-header .upload-box {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+}
+
 @media (max-width: 720px) {
   .news-column { width: 100%; }
 }
@@ -149,10 +169,12 @@ html, body {
   flex-wrap: wrap;
   gap: 0.45rem;
   align-items: center;
-  margin: 0 0 0.9rem;
+  margin: 0;
   padding: 0.7rem 0.75rem;
   border: 1px solid var(--line);
   background: #fff;
+  flex: 0 1 32rem;
+  max-width: 36rem;
 }
 
 .upload-label {
@@ -213,4 +235,219 @@ html, body {
   gap: 0.4rem;
   align-items: center;
   margin-top: 0.55rem;
+}
+
+.show-archived {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.65rem;
+  font-size: 0.8rem;
+  color: var(--grey);
+}
+
+.archived-tag {
+  display: inline-block;
+  margin-left: 0.45rem;
+  padding: 0.05rem 0.4rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fff;
+  background: var(--grey);
+  vertical-align: middle;
+}
+
+.news-item.is-archived .headline {
+  color: var(--grey);
+}
+
+.item-fields {
+  margin: 0;
+}
+
+.item-fields .field {
+  display: grid;
+  grid-template-columns: 7.5rem 1fr;
+  gap: 0.35rem 0.7rem;
+  margin: 0 0 0.35rem;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.item-fields dt {
+  margin: 0;
+  color: var(--grey);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.item-fields dd {
+  margin: 0;
+}
+
+.item-fields a {
+  color: var(--navy);
+}
+
+.item-actions {
+  display: flex;
+  gap: 0.7rem;
+  align-items: center;
+  margin: 0.65rem 0 0.15rem;
+}
+
+.item-actions a,
+.item-actions button {
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--navy);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.entry-page {
+  width: min(40rem, 100%);
+}
+
+.back-link {
+  margin: 0 0 0.7rem;
+  font-size: 0.85rem;
+}
+
+.back-link a {
+  color: var(--navy);
+}
+
+.entry-page h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.15rem;
+  color: var(--navy);
+}
+
+.entry-lead {
+  margin: 0 0 0.9rem;
+  font-size: 0.88rem;
+  color: var(--grey);
+}
+
+.entry-form {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem 1.1rem;
+  background: #fff;
+  border: 1px solid var(--line);
+}
+
+.entry-form label {
+  display: grid;
+  gap: 0.28rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--grey);
+}
+
+.entry-form input,
+.entry-form select,
+.entry-form textarea {
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink);
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--line);
+  width: 100%;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 10rem;
+  gap: 0.6rem;
+}
+
+.archive-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.88rem;
+  font-weight: 400;
+  color: var(--ink);
+}
+
+.archive-check input {
+  width: auto;
+}
+
+.entry-actions {
+  display: flex;
+  gap: 0.7rem;
+  align-items: center;
+  margin-top: 0.3rem;
+}
+
+.entry-actions button,
+.button-secondary {
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 700;
+  padding: 0.45rem 0.8rem;
+  text-decoration: none;
+}
+
+.entry-actions button {
+  color: #fff;
+  background: var(--navy);
+  border: 0;
+  cursor: pointer;
+}
+
+.entry-actions button:hover {
+  background: #232f78;
+}
+
+.button-secondary {
+  color: var(--navy);
+  border: 1px solid var(--navy);
+  background: #fff;
+}
+
+.excerpt-box {
+  margin-top: 1.2rem;
+  padding: 0.8rem 0.9rem;
+  background: #fff;
+  border-left: 3px solid var(--peach);
+}
+
+.excerpt-box h3 {
+  margin: 0 0 0.4rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--grey);
+}
+
+.excerpt-box p {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+@media (max-width: 720px) {
+  .field-row,
+  .item-fields .field {
+    grid-template-columns: 1fr;
+  }
 }

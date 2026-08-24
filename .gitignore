@@ -5,3 +5,4 @@ desktop.ini
 .venv/
 __pycache__/
 uploads/
+data/drafts/
