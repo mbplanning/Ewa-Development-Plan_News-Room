@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ʻEwa Development Plan News Room</title>
-  <link rel="stylesheet" href="css/newsroom.css">
+  <link rel="stylesheet" href="css/newsroom.css?v=norelated">
 </head>
 <body>
   <header class="site-header">
@@ -25,7 +25,13 @@
 
   <main class="page">
     <section class="news-column" aria-label="Recent news">
-      <h2>Recent news</h2>
+      <div class="news-heading">
+        <h2>Recent news</h2>
+        <label class="news-search-label">
+          Search
+          <input id="news-search" type="text" name="search" placeholder="Titles, summaries, document text" autocomplete="off">
+        </label>
+      </div>
       <label class="show-archived">
         <input type="checkbox" id="show-archived">
         Show archived
@@ -35,6 +41,6 @@
   </main>
 
   <script src="data/projects.js"></script>
-  <script src="js/news.js"></script>
+  <script src="js/news.js?v=norelated"></script>
 </body>
 </html>

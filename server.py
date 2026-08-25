@@ -12,6 +12,7 @@ import re
 import socket
 import uuid
 import zipfile
+import zlib
 from datetime import date
 from email import policy
 from email.parser import BytesParser
@@ -32,7 +33,14 @@ DRAFT_DIR.mkdir(parents=True, exist_ok=True)
 
 SOURCES = [
     ("Civil Beat", ("civil beat", "civilbeat")),
-    ("Honolulu Star-Advertiser", ("star-advertiser", "staradvertiser", "honolulu star")),
+    ("Honolulu Star-Advertiser", (
+        "honolulu star-advertiser",
+        "honolulu star advertiser",
+        "star-advertiser",
+        "star advertiser",
+        "staradvertiser",
+        "honolulu star",
+    )),
     ("Hawaii News Now", ("hawaii news now",)),
     ("KHON2", ("khon2", "khon ")),
     ("KITV", ("kitv",)),
@@ -129,6 +137,399 @@ def save_news(data: dict) -> None:
     NEWS_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+SKIP_STREAM = (
+    b"/FontFile",
+    b"/Type1C",
+    b"/CIDFontType0C",
+    b"/OpenType",
+    b"/Subtype/Image",
+    b"/Subtype /Image",
+    b"/DCTDecode",
+    b"/JPXDecode",
+    b"/JBIG2Decode",
+    b"/CCITTFaxDecode",
+)
+
+
+def inflate_bytes(payload: bytes) -> bytes | None:
+    for wbits in (zlib.MAX_WBITS, -zlib.MAX_WBITS):
+        try:
+            return zlib.decompress(payload, wbits)
+        except Exception:
+            continue
+    return None
+
+
+def iter_pdf_streams(data: bytes):
+    pos = 0
+    size = len(data)
+    while True:
+        idx = data.find(b"stream", pos)
+        if idx < 0:
+            return
+        if idx > 0 and data[idx - 1] not in b" \t\r\n><":
+            pos = idx + 6
+            continue
+        after = idx + 6
+        if after < size and data[after:after + 2] == b"\r\n":
+            start = after + 2
+        elif after < size and data[after] in b"\r\n":
+            start = after + 1
+        else:
+            pos = idx + 6
+            continue
+        end = data.find(b"endstream", start)
+        if end < 0:
+            return
+        obj = data.rfind(b"obj", max(0, idx - 600), idx)
+        dict_start = data.rfind(b"<<", obj if obj >= 0 else max(0, idx - 400), idx)
+        header = data[dict_start:idx] if dict_start >= 0 else data[max(0, idx - 200):idx]
+        payload = data[start:end]
+        if payload.endswith(b"\r\n"):
+            payload = payload[:-2]
+        elif payload.endswith(b"\n") or payload.endswith(b"\r"):
+            payload = payload[:-1]
+        yield header, payload
+        pos = end + 9
+
+
+def read_pdf_literal(text: str, index: int) -> tuple[str, int]:
+    size = len(text)
+    index += 1
+    depth = 1
+    out: list[str] = []
+    while index < size and depth:
+        ch = text[index]
+        if ch == "\\" and index + 1 < size:
+            nxt = text[index + 1]
+            mapping = {"n": "\n", "r": "\r", "t": "\t", "b": "\b", "f": "\f", "(": "(", ")": ")", "\\": "\\"}
+            if nxt in mapping:
+                out.append(mapping[nxt])
+                index += 2
+                continue
+            if nxt in "01234567":
+                octal = nxt
+                index += 2
+                while index < size and len(octal) < 3 and text[index] in "01234567":
+                    octal += text[index]
+                    index += 1
+                out.append(chr(int(octal, 8)))
+                continue
+            out.append(nxt)
+            index += 2
+            continue
+        if ch == "(":
+            depth += 1
+            out.append(ch)
+        elif ch == ")":
+            depth -= 1
+            if depth:
+                out.append(ch)
+        else:
+            out.append(ch)
+        index += 1
+    return "".join(out), index
+
+
+def pdf_utf16(hex_value: str) -> str:
+    hex_value = re.sub(r"\s+", "", hex_value)
+    if len(hex_value) % 4:
+        hex_value = hex_value.zfill(((len(hex_value) + 3) // 4) * 4)
+    chars = []
+    for i in range(0, len(hex_value), 4):
+        code = int(hex_value[i:i + 4], 16)
+        if code:
+            chars.append(chr(code))
+    return "".join(chars)
+
+
+def cmap_put(cmap: dict[str, str], src: str, dst: str) -> None:
+    src = src.upper()
+    cmap[src] = dst
+    cmap[src.zfill(2)] = dst
+    cmap[src.zfill(4)] = dst
+
+
+def parse_tounicode(text: str) -> dict[str, str]:
+    cmap: dict[str, str] = {}
+    for block in re.findall(r"beginbfchar(.*?)endbfchar", text, re.S | re.I):
+        for src, dst in re.findall(r"<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>", block):
+            cmap_put(cmap, src, pdf_utf16(dst))
+    for block in re.findall(r"beginbfrange(.*?)endbfrange", text, re.S | re.I):
+        for src1, src2, items in re.findall(
+            r"<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*\[([^\]]+)\]",
+            block,
+        ):
+            dests = re.findall(r"<([0-9A-Fa-f]+)>", items)
+            start = int(src1, 16)
+            for offset, dest in enumerate(dests):
+                cmap_put(cmap, format(start + offset, "X").zfill(len(src1)), pdf_utf16(dest))
+        for src1, src2, dst in re.findall(
+            r"<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>",
+            block,
+        ):
+            start = int(src1, 16)
+            end = int(src2, 16)
+            base = int(dst[:4], 16) if dst else 0
+            for offset, cid in enumerate(range(start, end + 1)):
+                cmap_put(cmap, format(cid, "X").zfill(len(src1)), chr(base + offset))
+    return cmap
+
+
+def merge_cmaps(maps: list[dict[str, str]]) -> dict[str, str]:
+    merged: dict[str, str] = {}
+    for cmap in maps:
+        for key, value in cmap.items():
+            old = merged.get(key)
+            if old is None or (not any(ch.isalpha() for ch in old) and any(ch.isalpha() for ch in value)):
+                merged[key] = value
+    return merged
+
+
+def decode_hex_string(hex_value: str, cmap: dict[str, str]) -> str:
+    hex_value = re.sub(r"\s+", "", hex_value).upper()
+    out: list[str] = []
+    i = 0
+    while i < len(hex_value):
+        matched = False
+        for width in (4, 2):
+            if i + width <= len(hex_value):
+                token = hex_value[i:i + width]
+                if token in cmap:
+                    out.append(cmap[token])
+                    i += width
+                    matched = True
+                    break
+        if not matched:
+            i += 2 if i + 2 <= len(hex_value) else 1
+    return "".join(out)
+
+
+def skip_ws(text: str, index: int) -> int:
+    size = len(text)
+    while index < size and text[index] in " \t\r\n":
+        index += 1
+    return index
+
+
+def is_show_op(text: str, index: int) -> bool:
+    return text.startswith("Tj", index) or (index < len(text) and text[index] in "'\"")
+
+
+def collect_content_lines(content: bytes, cmap: dict[str, str] | None = None) -> list[tuple[float, str]]:
+    if b"Tj" not in content and b"TJ" not in content:
+        return []
+    cmap = cmap or {}
+    text = content.decode("latin-1", errors="ignore")
+    size = len(text)
+    index = 0
+    lines: list[tuple[float, str]] = []
+    current: list[str] = []
+    font_size = 0.0
+    line_size = 0.0
+
+    def flush() -> None:
+        nonlocal line_size
+        if current:
+            lines.append((line_size or font_size, "".join(current)))
+            current.clear()
+        line_size = font_size
+
+    def add_text(piece: str) -> None:
+        nonlocal line_size
+        if piece:
+            current.append(piece)
+            line_size = max(line_size, font_size)
+
+    def read_tf(at: int) -> None:
+        nonlocal font_size, line_size
+        j = at
+        while j > 0 and text[j - 1] in " \t":
+            j -= 1
+        k = j
+        while k > 0 and (text[k - 1].isdigit() or text[k - 1] == "."):
+            k -= 1
+        if k < j:
+            try:
+                font_size = float(text[k:j])
+                if not current:
+                    line_size = font_size
+            except ValueError:
+                pass
+
+    while index < size:
+        ch = text[index]
+        if text.startswith("Tf", index) and (index + 2 == size or not text[index + 2].isalnum()):
+            read_tf(index)
+            index += 2
+            continue
+        if ch == "(":
+            literal, index = read_pdf_literal(text, index)
+            index = skip_ws(text, index)
+            if is_show_op(text, index):
+                add_text(literal)
+                if text.startswith("Tj", index):
+                    index += 2
+                else:
+                    flush()
+                    index += 1
+            continue
+        if ch == "<" and index + 1 < size and text[index + 1] != "<":
+            end = text.find(">", index)
+            if end < 0:
+                break
+            hex_value = text[index + 1:end]
+            index = skip_ws(text, end + 1)
+            if is_show_op(text, index):
+                add_text(decode_hex_string(hex_value, cmap))
+                if text.startswith("Tj", index):
+                    index += 2
+                else:
+                    flush()
+                    index += 1
+                continue
+            index = end + 1
+            continue
+        if ch == "[":
+            pieces: list[str] = []
+            index += 1
+            depth = 1
+            while index < size and depth:
+                if text[index] == "(":
+                    literal, index = read_pdf_literal(text, index)
+                    pieces.append(literal)
+                    continue
+                if text[index] == "<" and index + 1 < size and text[index + 1] != "<":
+                    end = text.find(">", index)
+                    if end < 0:
+                        break
+                    pieces.append(decode_hex_string(text[index + 1:end], cmap))
+                    index = end + 1
+                    continue
+                if text[index] == "[":
+                    depth += 1
+                elif text[index] == "]":
+                    depth -= 1
+                    if depth == 0:
+                        index += 1
+                        break
+                index += 1
+            index = skip_ws(text, index)
+            if text.startswith("TJ", index):
+                add_text("".join(pieces))
+                index += 2
+            continue
+        if text.startswith("T*", index) and (index + 2 == size or not text[index + 2].isalnum()):
+            flush()
+            index += 2
+            continue
+        if text.startswith("ET", index) and (index + 2 == size or not text[index + 2].isalnum()):
+            flush()
+            index += 2
+            continue
+        index += 1
+    flush()
+    cleaned: list[tuple[float, str]] = []
+    for size_value, line in lines:
+        line = re.sub(r"[ \t]+", " ", line.replace("\x00", " ")).strip()
+        if line:
+            cleaned.append((size_value, line))
+    return cleaned
+
+
+def title_from_font(runs: list[tuple[float, str]]) -> str:
+    head = []
+    for size_value, line in runs[:50]:
+        line = re.sub(r"\s+", " ", line).strip(" -–—")
+        if line:
+            head.append((size_value, line))
+    if not head:
+        return ""
+
+    def letters(value: str) -> int:
+        return sum(ch.isalpha() for ch in value)
+
+    sized = [row for row in head if letters(row[1]) >= 8 and len(row[1]) <= 240]
+    pool = sized or [row for row in head if letters(row[1]) >= 4] or head
+    max_size = max(row[0] for row in pool) or 1
+    parts: list[str] = []
+    started = False
+    for size_value, line in head:
+        if letters(line) < 6:
+            if started:
+                break
+            continue
+        if size_value >= max_size * 0.88:
+            parts.append(line)
+            started = True
+        elif not started:
+            continue
+        else:
+            break
+    return re.sub(r"\s+", " ", " ".join(parts)).strip()[:300]
+
+
+def pdf_info_title(data: bytes) -> str:
+    match = re.search(rb"/Title\s*\((?:\\.|[^\\)])*\)", data)
+    if not match:
+        return ""
+    raw = match.group(0).split(b"(", 1)[1][:-1]
+    text = raw.decode("latin-1", errors="replace")
+    text = text.replace("\x18", "ʻ").replace("\x19", "ʻ")
+    text = re.sub(r"\\([nrtbf()\\])", lambda m: {"n": "\n", "r": "\r", "t": "\t", "b": "\b", "f": "\f"}.get(m.group(1), m.group(1)), text)
+    return re.sub(r"\s+", " ", text).strip(" -–—")
+
+
+def extract_pdf_text(path: Path) -> tuple[str, list[str]]:
+    data = path.read_bytes()
+    raw = data.decode("latin-1", errors="ignore")
+    links = find_urls(raw)
+    links.extend(re.findall(r"/URI\s*\((https?://[^)]+)\)", raw))
+    contents: list[bytes] = []
+    cmaps: list[dict[str, str]] = []
+    for header, payload in iter_pdf_streams(data):
+        if any(marker in header for marker in SKIP_STREAM):
+            continue
+        content = payload
+        if b"/FlateDecode" in header or b"/Flate" in header:
+            inflated = inflate_bytes(payload)
+            if inflated is None:
+                continue
+            content = inflated
+        if b"beginbfchar" in content or b"beginbfrange" in content:
+            cmaps.append(parse_tounicode(content.decode("latin-1", errors="ignore")))
+            continue
+        if len(content) > 2_000_000 and b"Tj" not in content and b"TJ" not in content:
+            continue
+        contents.append(content)
+    cmap = merge_cmaps(cmaps)
+    runs: list[tuple[float, str]] = []
+    for content in contents:
+        runs.extend(collect_content_lines(content, cmap))
+    text = "\n".join(line for _size, line in runs).strip()
+    text = re.sub(r"-\s*\n\s*", "", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    heading = title_from_font(runs)
+    if heading:
+        first = next((line.strip() for line in text.splitlines() if line.strip()), "")
+        if fold(heading) not in fold(first):
+            text = heading + ("\n\n" + text if text else "")
+    if not runs:
+        text = (
+            "No readable article text was found in this PDF. "
+            "It may be a scan or an image. Please fill in the fields from the original document."
+        )
+    links.extend(find_urls(text))
+    return text, unique_keep(links)
+
+
+def usable_document_text(text: str) -> bool:
+    letters = sum(ch.isalpha() for ch in text)
+    if letters < 40:
+        return False
+    return letters / max(len(text), 1) >= 0.30
+
+
 def extract_text(path: Path) -> tuple[str, list[str]]:
     suffix = path.suffix.lower()
     links: list[str] = []
@@ -150,22 +551,7 @@ def extract_text(path: Path) -> tuple[str, list[str]]:
         links.extend(find_urls(text))
         return text, unique_keep(links)
     if suffix == ".pdf":
-        raw = path.read_bytes().decode("latin-1", errors="ignore")
-        links.extend(re.findall(r"/URI\s*\((https?://[^)]+)\)", raw))
-        chunks = re.findall(r"\((?:\\.|[^\\)]){4,}\)\s*Tj", raw)
-        if not chunks:
-            chunks = re.findall(r"\((?:\\.|[^\\)]){6,}\)", raw)
-        cleaned = []
-        for chunk in chunks:
-            inner = re.sub(r"\)\s*Tj$", "", chunk)
-            text = inner[1:-1] if inner.startswith("(") else inner
-            text = bytes(text, "latin-1").decode("unicode_escape", errors="ignore")
-            text = re.sub(r"[\x00-\x1f]+", " ", text)
-            if re.search(r"[A-Za-z]{3}", text):
-                cleaned.append(text.strip())
-        text = " ".join(cleaned[:120])
-        links.extend(find_urls(text))
-        return text, unique_keep(links)
+        return extract_pdf_text(path)
     return "", []
 
 
@@ -196,8 +582,13 @@ def is_header_line(line: str) -> bool:
     if len(text) < 8:
         return True
     folded = fold(text)
-    if folded in org_skip() or any(len(name) >= 8 and folded.endswith(name) for name in org_skip()):
-        return True
+    for name in org_skip():
+        if len(name) < 8:
+            continue
+        if folded == name:
+            return True
+        if folded.endswith(name) and len(folded) - len(name) <= 28:
+            return True
     if re.match(r"^(page|http|www\.|\d{1,2}/\d{1,2}/\d{2,4})", text, re.I):
         return True
     if re.match(r"^(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d", folded):
@@ -208,12 +599,26 @@ def is_header_line(line: str) -> bool:
 def first_title(text: str, filename: str) -> str:
     for line in (text or "").splitlines():
         line = re.sub(r"\s+", " ", line).strip(" -–—")
-        if len(line) < 8 or len(line) > 140 or is_header_line(line):
-            continue
-        return line
+        if len(line) >= 4 and not line.lower().startswith("no readable article"):
+            return line[:300]
     stem = Path(filename).stem
     stem = re.sub(r"[_-]+", " ", stem).strip()
     return stem[:140]
+
+
+def extract_source(text: str, filename: str) -> str:
+    lines = [re.sub(r"\s+", " ", line).strip() for line in (text or "").splitlines() if line.strip()]
+    tail = "\n".join(lines[-25:])
+    tail = tail + "\n" + (text or "")[-2000:]
+    hay = fold(tail)
+    for label, needles in SOURCES:
+        if any(needle in hay for needle in needles):
+            return label
+    hay_name = fold(filename)
+    for label, needles in SOURCES:
+        if any(needle in hay_name for needle in needles):
+            return label
+    return ""
 
 
 def one_sentence(text: str) -> str:
@@ -221,24 +626,18 @@ def one_sentence(text: str) -> str:
     for line in (text or "").splitlines():
         cleaned = re.sub(r"\s+", " ", line).strip()
         if cleaned and not is_header_line(cleaned):
-            if "." not in cleaned and "?" not in cleaned and len(cleaned) <= 90:
-                continue
             lines.append(cleaned)
     body = " ".join(lines) or re.sub(r"\s+", " ", (text or "")).strip()
     if not body:
         return ""
-    ranked = []
     for sentence in re.split(r"(?<=[.!?])\s+", body):
         sentence = sentence.strip()
         if len(sentence) < 40:
             continue
-        score = 1
-        if re.search(r"\b(announced|seeks|seeking|reported|approved|denied|said|will|reviewing|established)\b", sentence, re.I):
-            score = 2
-        ranked.append((score, sentence))
-    if ranked:
-        ranked.sort(key=lambda item: (-item[0], len(item[1])))
-        sentence = ranked[0][1]
+        if sentence.lower().startswith("http") or "%2F" in sentence:
+            continue
+        if sentence.lower().startswith("no readable article"):
+            continue
         if len(sentence) > 320:
             sentence = sentence[:320].rsplit(" ", 1)[0] + "…"
         return sentence
@@ -273,14 +672,6 @@ def extract_date(text: str) -> str:
     return ""
 
 
-def extract_source(text: str, filename: str) -> str:
-    hay = fold(text + " " + filename)
-    for label, needles in SOURCES:
-        if any(name_in_text(hay, needle.strip()) or needle in hay for needle in needles):
-            return label
-    return ""
-
-
 def extract_place(text: str) -> tuple[str, str]:
     hay = fold(text)
     tmk = re.search(r"\bTMKs?\b[^.]{0,80}", text or "", re.I)
@@ -289,7 +680,7 @@ def extract_place(text: str) -> tuple[str, str]:
             place = label
             if tmk and kind != "road":
                 return (place + ", " + re.sub(r"\s+", " ", tmk.group(0)).strip()), "point"
-            if re.search(r"\b(TMK|parcel|site|lot)\b", text or "", re.I) and kind == "region":
+            if tmk and kind == "region":
                 return place, "point"
             return place, kind
     if tmk:
@@ -389,11 +780,19 @@ def empty_item() -> dict:
         "sourceFile": "",
         "archived": False,
         "needsReview": True,
+        "documentText": "",
     }
 
 
 def extract_fields(text: str, filename: str, links: list[str], extra: dict[str, str]) -> dict:
     item = empty_item()
+    if not usable_document_text(text):
+        item["headline"] = (extra.get("headline") or "").strip() or first_title("", filename)
+        item["sourceUrl"] = (extra.get("sourceUrl") or extra.get("link") or "").strip() or (links[0] if links else "")
+        if extra.get("note"):
+            item["summary"] = extra["note"].strip()
+        item["documentText"] = text or ""
+        return item
     place, location_type = extract_place(text)
     gov, other = extract_parties(text)
     item["headline"] = (extra.get("headline") or "").strip() or first_title(text, filename)
@@ -406,6 +805,7 @@ def extract_fields(text: str, filename: str, links: list[str], extra: dict[str, 
     item["otherParties"] = other
     item["sourceUrl"] = (extra.get("sourceUrl") or extra.get("link") or "").strip() or (links[0] if links else "")
     item["date"] = extract_date(text)
+    item["documentText"] = text or ""
     if extra.get("note"):
         note = extra["note"].strip()
         if note and note not in (item["summary"] or ""):
@@ -468,7 +868,13 @@ def create_draft(fields: dict[str, str], files: dict[str, tuple[str, bytes]]) ->
     item["sourceType"] = source_type(suffix) if suffix else "Link"
     item["sourceFile"] = stored_rel
     draft_id = "draft-" + uuid.uuid4().hex[:10]
-    excerpt = re.sub(r"\s+", " ", text).strip()[:1500]
+    excerpt = (item.get("documentText") or text or "").strip()
+    if not excerpt:
+        excerpt = (
+            "No readable text was found in this file. "
+            "It may be a scan or an image. Please fill in the fields from the original document."
+        )
+        item["documentText"] = excerpt
     payload = {"draftId": draft_id, "item": item, "excerpt": excerpt, "originalName": filename}
     draft_path(draft_id).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return 200, payload
@@ -543,6 +949,17 @@ def save_item(fields: dict) -> tuple[int, dict]:
     return 200, {"ok": True, "item": item}
 
 
+def delete_item(item_id: str) -> tuple[int, dict]:
+    data = load_news()
+    items = data.get("items") or []
+    kept = [item for item in items if item.get("id") != item_id]
+    if len(kept) == len(items):
+        return 404, {"error": "News item not found."}
+    data["items"] = kept
+    save_news(data)
+    return 200, {"ok": True, "id": item_id}
+
+
 def set_archived(item_id: str, archived: bool) -> tuple[int, dict]:
     data = load_news()
     for item in data.get("items") or []:
@@ -559,6 +976,12 @@ class Handler(SimpleHTTPRequestHandler):
 
     def log_message(self, format: str, *args) -> None:
         print("[%s] %s" % (self.log_date_time_string(), format % args))
+
+    def end_headers(self) -> None:
+        path = urlparse(self.path).path.lower()
+        if path.endswith(("/", ".html", ".js", ".css", ".json")) or path in {"", "/"}:
+            self.send_header("Cache-Control", "no-store")
+        super().end_headers()
 
     def send_json(self, status: int, payload: dict) -> None:
         raw_status, raw, content_type = json_bytes(payload, status)
@@ -610,6 +1033,9 @@ class Handler(SimpleHTTPRequestHandler):
                 fields = json.loads(body.decode("utf-8")) if body else {}
                 item_id = str(fields.get("id") or "")
                 status, payload = set_archived(item_id, bool_flag(fields.get("archived", True)))
+            elif path == "/api/delete":
+                fields = json.loads(body.decode("utf-8")) if body else {}
+                status, payload = delete_item(str(fields.get("id") or ""))
             else:
                 self.send_error(404, "Not found")
                 return

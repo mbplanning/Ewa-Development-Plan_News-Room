@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>News entry · ʻEwa Development Plan News Room</title>
-  <link rel="stylesheet" href="css/newsroom.css">
+  <link rel="stylesheet" href="css/newsroom.css?v=doc8">
 </head>
 <body>
   <header class="site-header">
@@ -25,6 +25,7 @@
       <input type="hidden" name="id" id="field-id">
       <input type="hidden" name="sourceType" id="field-sourceType">
       <input type="hidden" name="sourceFile" id="field-sourceFile">
+      <input type="hidden" name="sourceUrl" id="field-sourceUrl">
 
       <label>
         1. Title of the document
@@ -73,18 +74,18 @@
       </label>
 
       <label>
-        7. Link
-        <input type="text" name="sourceUrl" id="field-sourceUrl" placeholder="https://">
-      </label>
-
-      <label>
         Date
         <input type="date" name="date" id="field-date">
       </label>
 
       <label class="archive-check">
         <input type="checkbox" name="archived" id="field-archived">
-        8. Archive — this news is no longer relevant
+        7. Archive — this news is no longer relevant
+      </label>
+
+      <label class="document-field-label">
+        8. From this document
+        <textarea name="documentText" id="field-documentText" placeholder="Full text from the document. Edit as needed."></textarea>
       </label>
 
       <div class="entry-actions">
@@ -92,13 +93,8 @@
         <a class="button-secondary" href="index.html">Cancel</a>
       </div>
     </form>
-
-    <section id="excerpt-box" class="excerpt-box" hidden>
-      <h3>From the document</h3>
-      <p id="excerpt-text"></p>
-    </section>
   </main>
 
-  <script src="js/entry.js"></script>
+  <script src="js/entry.js?v=doc8"></script>
 </body>
 </html>

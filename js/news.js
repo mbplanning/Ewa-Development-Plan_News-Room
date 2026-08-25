@@ -103,12 +103,51 @@
     );
   }
 
+  function normalizeSearchText(value) {
+    return String(value || "")
+      .replace(/-\s*\n\s*/g, "")
+      .toLowerCase()
+      .replace(/[\u2018\u2019\u201c\u201d]/g, "")
+      .replace(/[^a-z0-9āēīōūʻ\s]+/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function searchHaystack(item) {
+    return normalizeSearchText([
+      item.headline,
+      item.summary,
+      item.source,
+      item.place,
+      item.timeline,
+      item.governmentParties,
+      item.otherParties,
+      item.date,
+      item.documentText
+    ].join(" "));
+  }
+
+  function matchesSearch(item, query) {
+    var words = normalizeSearchText(query).split(" ").filter(Boolean);
+    if (!words.length) return true;
+    var hay = searchHaystack(item);
+    return words.every(function (word) {
+      return hay.indexOf(word) !== -1;
+    });
+  }
+
   function renderList(data) {
     var root = document.getElementById("news-list");
     var showArchived = document.getElementById("show-archived").checked;
-    var items = newsItems(data, showArchived);
+    var searchNode = document.getElementById("news-search");
+    var query = searchNode ? searchNode.value : "";
+    var items = newsItems(data, showArchived).filter(function (item) {
+      return matchesSearch(item, query);
+    });
     if (!items.length) {
-      root.innerHTML = '<li class="empty">No news yet. Upload a PDF, Word, or text file to add an item.</li>';
+      root.innerHTML = query.trim()
+        ? '<li class="empty">No submitted news matches that search.</li>'
+        : '<li class="empty">No news yet. Upload a PDF, Word, or text file to add an item.</li>';
       return;
     }
     root.innerHTML = items.map(function (item) {
@@ -133,18 +172,17 @@
                 fieldRow("Source", item.source) +
                 fieldRow("Timeline", item.timeline) +
                 fieldRow("Parties", parties(item)) +
-                fieldRow("Link", item.sourceUrl, true) +
+                (item.documentText
+                  ? '<div class="field document-field"><dt>From this document</dt><dd><pre class="saved-document">' + escapeHtml(item.documentText) + "</pre></dd></div>"
+                  : "") +
               "</dl>" +
               '<div class="item-actions">' +
                 '<a href="entry.html?id=' + encodeURIComponent(item.id) + '">Edit</a>' +
                 '<button type="button" class="archive-btn" data-id="' + escapeHtml(item.id) + '" data-archived="' + (item.archived ? "0" : "1") + '">' +
                   (item.archived ? "Unarchive" : "Archive") +
                 "</button>" +
+                '<button type="button" class="delete-btn" data-id="' + escapeHtml(item.id) + '">Delete this post</button>' +
               "</div>" +
-              '<form class="item-upload" data-related="' + escapeHtml(item.headline) + '">' +
-                '<input type="file" name="file" accept=".pdf,.docx,.txt,.md,.text" required>' +
-                '<button type="submit">Upload related</button>' +
-              "</form>" +
             "</div>" +
           "</details>" +
         "</li>"
@@ -167,8 +205,6 @@
     }
     var link = form.querySelector('[name="sourceUrl"]');
     if (link && link.value.trim()) payload.append("sourceUrl", link.value.trim());
-    var related = form.getAttribute("data-related");
-    if (related) payload.append("note", "Related to: " + related);
     if (!payload.has("file") && !payload.has("sourceUrl")) {
       return Promise.reject(new Error("Choose a file first."));
     }
@@ -219,17 +255,30 @@
           setStatus(error.message || "Upload failed.", true);
         });
     });
-    document.getElementById("news-list").addEventListener("submit", function (event) {
-      var form = event.target.closest(".item-upload");
-      if (!form) return;
-      event.preventDefault();
-      postDraft(form)
-        .then(openDraft)
-        .catch(function (error) {
-          setStatus(error.message || "Upload failed.", true);
-        });
-    });
     document.getElementById("news-list").addEventListener("click", function (event) {
+      var deleteBtn = event.target.closest(".delete-btn");
+      if (deleteBtn) {
+        if (!window.confirm("Delete this post? This cannot be undone.")) return;
+        fetch("/api/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: deleteBtn.getAttribute("data-id") })
+        })
+          .then(function (response) {
+            return response.json().then(function (body) {
+              if (!response.ok) throw new Error(body.error || "Could not delete that post.");
+              return body;
+            });
+          })
+          .then(function () {
+            setStatus("Post deleted.");
+            return loadAndRender();
+          })
+          .catch(function (error) {
+            setStatus(error.message || "Could not delete that post.", true);
+          });
+        return;
+      }
       var button = event.target.closest(".archive-btn");
       if (!button) return;
       fetch("/api/archive", {
@@ -256,6 +305,12 @@
     document.getElementById("show-archived").addEventListener("change", function () {
       renderList(lastData);
     });
+    var searchBox = document.getElementById("news-search");
+    if (searchBox) {
+      searchBox.addEventListener("input", function () {
+        renderList(lastData);
+      });
+    }
   }
 
   document.addEventListener("DOMContentLoaded", function () {

@@ -27,10 +27,7 @@
     document.getElementById("field-sourceUrl").value = item.sourceUrl || "";
     document.getElementById("field-date").value = item.date || "";
     document.getElementById("field-archived").checked = !!item.archived;
-    if (extra.excerpt) {
-      document.getElementById("excerpt-box").hidden = false;
-      document.getElementById("excerpt-text").textContent = extra.excerpt;
-    }
+    document.getElementById("field-documentText").value = item.documentText || extra.excerpt || "";
     if (extra.heading) {
       document.getElementById("entry-heading").textContent = extra.heading;
     }
@@ -53,7 +50,8 @@
       otherParties: form.otherParties.value.trim(),
       sourceUrl: form.sourceUrl.value.trim(),
       date: form.date.value,
-      archived: form.archived.checked
+      archived: form.archived.checked,
+      documentText: form.documentText.value
     };
   }
 
