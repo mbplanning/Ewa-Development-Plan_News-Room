@@ -69,6 +69,7 @@
             timeline: "",
             governmentParties: "",
             otherParties: "",
+            actionItem: "",
             sourceUrl: source ? (source.url || "") : "",
             archived: false
           });
@@ -84,6 +85,22 @@
       return parseDate(b.date) - parseDate(a.date);
     });
     return items;
+  }
+
+  function actionFlag(item) {
+    var text = String(item.actionItem || "").trim();
+    if (!text) return "";
+    return (
+      '<span class="action-flag" tabindex="0" aria-label="Action item">' +
+        '<span class="action-flag-mark" aria-hidden="true"></span>' +
+        '<span class="action-flag-tip">' +
+          '<span class="action-flag-text">' + escapeHtml(text) + "</span>" +
+          '<label class="action-done-label" data-id="' + escapeHtml(item.id) + '">' +
+            '<input type="checkbox" class="action-done" data-id="' + escapeHtml(item.id) + '" aria-label="Mark action item done">' +
+          "</label>" +
+        "</span>" +
+      "</span>"
+    );
   }
 
   function fieldRow(label, value, isLink) {
@@ -122,6 +139,7 @@
       item.timeline,
       item.governmentParties,
       item.otherParties,
+      item.actionItem,
       item.date,
       item.documentText
     ].join(" "));
@@ -176,6 +194,7 @@
         '<li class="news-item' + (item.archived ? " is-archived" : "") + onMap + '" data-id="' + escapeHtml(item.id) + '">' +
           "<details" + open + ">" +
             "<summary>" +
+              actionFlag(item) +
               "<span>" +
                 '<span class="headline">' + escapeHtml(item.headline) + "</span>" +
                 archived +
@@ -189,6 +208,7 @@
                 fieldRow("Source", item.source) +
                 fieldRow("Timeline", item.timeline) +
                 fieldRow("Parties", parties(item)) +
+                fieldRow("Action item", item.actionItem) +
                 (item.documentText
                   ? '<div class="field document-field"><dt>From this document</dt><dd><pre class="saved-document">' + escapeHtml(item.documentText) + "</pre></dd></div>"
                   : "") +
@@ -242,6 +262,28 @@
 
   var lastData = { items: [] };
 
+  function completeActionItem(itemId) {
+    var match = (lastData.items || []).filter(function (entry) {
+      return entry.id === itemId;
+    })[0];
+    if (match) match.actionItem = "";
+    return fetch("/api/news", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: itemId, actionItem: "" })
+    }).then(function (response) {
+      return response.json().then(function (body) {
+        if (!response.ok) throw new Error(body.error || "Could not mark that action item done.");
+        if (body.item) {
+          (lastData.items || []).forEach(function (entry, index) {
+            if (entry.id === body.item.id) lastData.items[index] = body.item;
+          });
+        }
+        return body;
+      });
+    });
+  }
+
   function saveItemGeometry(itemId, geometry, locationType) {
     var match = (lastData.items || []).filter(function (entry) {
       return entry.id === itemId;
@@ -268,6 +310,7 @@
           var li = document.querySelector('.news-item[data-id="' + itemId + '"]');
           if (li) li.classList.toggle("is-on-map", !!body.item.geometry);
         }
+        refreshUndoButton();
         return body;
       });
     });
@@ -298,6 +341,7 @@
       .then(function (data) {
         lastData = data;
         renderList(data);
+        return refreshUndoButton();
       })
       .catch(function () {
         if (window.EWA_DP_DATA) {
@@ -315,6 +359,50 @@
     window.location.href = "entry.html?draft=" + encodeURIComponent(body.draftId);
   }
 
+  function formatToday() {
+    return new Date().toLocaleDateString("en-US", {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+      year: "numeric"
+    });
+  }
+
+  function startTodayDate() {
+    var node = document.getElementById("today-date");
+    if (!node) return;
+    function tick() {
+      node.textContent = formatToday();
+    }
+    tick();
+    window.setInterval(tick, 30000);
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) tick();
+    });
+  }
+
+  function setUndoRemaining(count) {
+    var button = document.getElementById("undo-board");
+    if (!button) return;
+    var remaining = Number(count) || 0;
+    button.disabled = remaining < 1;
+    button.setAttribute("data-remaining", String(remaining));
+  }
+
+  function refreshUndoButton() {
+    return fetch("/api/undo-status", { cache: "no-store" })
+      .then(function (response) {
+        return response.json().then(function (body) {
+          if (!response.ok) throw new Error(body.error || "Could not check undo history.");
+          setUndoRemaining(body.remaining);
+          return body;
+        });
+      })
+      .catch(function () {
+        setUndoRemaining(0);
+      });
+  }
+
   function bindUploads() {
     document.getElementById("upload-form").addEventListener("submit", function (event) {
       event.preventDefault();
@@ -326,7 +414,28 @@
           setStatus(error.message || "Upload failed.", true);
         });
     });
+    document.getElementById("news-list").addEventListener("mousedown", function (event) {
+      if (event.target.closest(".action-done-label, .action-done, .action-flag-tip")) {
+        event.preventDefault();
+      }
+    });
     document.getElementById("news-list").addEventListener("click", function (event) {
+      var doneBox = event.target.closest(".action-done-label");
+      if (doneBox) {
+        event.preventDefault();
+        event.stopPropagation();
+        var itemId = doneBox.getAttribute("data-id") || "";
+        if (!itemId) return;
+        completeActionItem(itemId)
+          .then(function () {
+            setStatus("Action item marked done.");
+            return loadAndRender();
+          })
+          .catch(function (error) {
+            setStatus(error.message || "Could not mark that action item done.", true);
+          });
+        return;
+      }
       var deleteBtn = event.target.closest(".delete-btn");
       if (deleteBtn) {
         if (!window.confirm("Delete this post? This cannot be undone.")) return;
@@ -376,6 +485,56 @@
     document.getElementById("show-archived").addEventListener("change", function () {
       renderList(lastData);
     });
+    var saveBoard = document.getElementById("save-board");
+    if (saveBoard) {
+      saveBoard.addEventListener("click", function () {
+        saveBoard.disabled = true;
+        fetch("/api/snapshot", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(lastData)
+        })
+          .then(function (response) {
+            return response.json().then(function (body) {
+              if (!response.ok) throw new Error(body.error || "Could not save.");
+              return body;
+            });
+          })
+          .then(function (body) {
+            setUndoRemaining(body.remaining);
+            setStatus("Saved.");
+          })
+          .catch(function (error) {
+            setStatus(error.message || "Could not save.", true);
+          })
+          .then(function () {
+            saveBoard.disabled = false;
+          });
+      });
+    }
+    var undoBoard = document.getElementById("undo-board");
+    if (undoBoard) {
+      undoBoard.addEventListener("click", function () {
+        if (undoBoard.disabled) return;
+        undoBoard.disabled = true;
+        fetch("/api/undo", { method: "POST" })
+          .then(function (response) {
+            return response.json().then(function (body) {
+              if (!response.ok) throw new Error(body.error || "Could not reverse that step.");
+              return body;
+            });
+          })
+          .then(function (body) {
+            setUndoRemaining(body.remaining);
+            setStatus("Reversed the last step.");
+            return loadAndRender();
+          })
+          .catch(function (error) {
+            setStatus(error.message || "Could not reverse that step.", true);
+            return refreshUndoButton();
+          });
+      });
+    }
     var searchBox = document.getElementById("news-search");
     if (searchBox) {
       searchBox.addEventListener("input", function () {
@@ -415,6 +574,7 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
+    startTodayDate();
     bindUploads();
     loadAndRender();
     if (params().get("saved") === "1") {

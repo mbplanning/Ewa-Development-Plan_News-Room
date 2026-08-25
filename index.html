@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ʻEwa Development Plan News Room</title>
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
-  <link rel="stylesheet" href="css/newsroom.css?v=map7">
+  <link rel="stylesheet" href="css/newsroom.css?v=header1">
 </head>
 <body>
   <header class="site-header">
@@ -13,6 +13,11 @@
       <img class="logo" src="assets/ewa-dp-logo.png" alt="ʻEwa Development Plan">
       <div class="header-text">
         <h1>ʻEwa Development Plan News Room</h1>
+        <p id="today-date" class="today-date"></p>
+        <div class="header-tools">
+          <button type="button" id="save-board">Save</button>
+          <button type="button" id="undo-board" disabled>Reverse a step</button>
+        </div>
       </div>
     </div>
     <form id="upload-form" class="upload-box" enctype="multipart/form-data">
@@ -70,6 +75,6 @@
   <script src="vendor/leaflet/leaflet.js"></script>
   <script src="js/places.js?v=map7"></script>
   <script src="js/map.js?v=map7"></script>
-  <script src="js/news.js?v=map7"></script>
+  <script src="js/news.js?v=header1"></script>
 </body>
 </html>

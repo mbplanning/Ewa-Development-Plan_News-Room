@@ -13,7 +13,7 @@ import socket
 import uuid
 import zipfile
 import zlib
-from datetime import date
+from datetime import date, datetime
 from email import policy
 from email.parser import BytesParser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -23,13 +23,18 @@ from urllib.parse import parse_qs, unquote, urlparse
 ROOT = Path(__file__).resolve().parent
 NEWS_PATH = ROOT / "data" / "news.json"
 DRAFT_DIR = ROOT / "data" / "drafts"
+UNDO_DIR = ROOT / "data" / "undo"
+SNAP_DIR = ROOT / "data" / "snapshots"
 UPLOAD_DIR = ROOT / "uploads"
 ALLOWED = {".pdf", ".docx", ".txt", ".md", ".text"}
 MAX_BYTES = 20 * 1024 * 1024
+UNDO_MAX = 3
 PORT = 8765
 
 UPLOAD_DIR.mkdir(exist_ok=True)
 DRAFT_DIR.mkdir(parents=True, exist_ok=True)
+UNDO_DIR.mkdir(parents=True, exist_ok=True)
+SNAP_DIR.mkdir(parents=True, exist_ok=True)
 
 SOURCES = [
     ("Civil Beat", ("civil beat", "civilbeat")),
@@ -132,9 +137,64 @@ def load_news() -> dict:
     return {"meta": {"title": "ʻEwa Development Plan News Room", "updated": ""}, "items": []}
 
 
-def save_news(data: dict) -> None:
+def undo_paths() -> list[Path]:
+    if not UNDO_DIR.exists():
+        return []
+    return sorted(path for path in UNDO_DIR.glob("*.json") if path.is_file())
+
+
+def undo_remaining() -> int:
+    return len(undo_paths())
+
+
+def push_undo_if_changed(next_text: str) -> None:
+    if not NEWS_PATH.exists():
+        return
+    old = NEWS_PATH.read_text(encoding="utf-8")
+    if old == next_text:
+        return
+    UNDO_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    (UNDO_DIR / (stamp + ".json")).write_text(old, encoding="utf-8")
+    files = undo_paths()
+    extra = len(files) - UNDO_MAX
+    for path in files[:max(0, extra)]:
+        path.unlink(missing_ok=True)
+
+
+def save_news(data: dict, *, record_undo: bool = True) -> None:
     data.setdefault("meta", {})["updated"] = date.today().isoformat()
-    NEWS_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    NEWS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+    if record_undo:
+        push_undo_if_changed(text)
+    NEWS_PATH.write_text(text, encoding="utf-8")
+
+
+def undo_status() -> tuple[int, dict]:
+    return 200, {"ok": True, "remaining": undo_remaining()}
+
+
+def snapshot_board(fields: dict | None) -> tuple[int, dict]:
+    if isinstance(fields, dict) and "items" in fields:
+        save_news(fields, record_undo=True)
+    if not NEWS_PATH.exists():
+        return 400, {"error": "Nothing to save."}
+    SNAP_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    dest = SNAP_DIR / ("news-" + stamp + ".json")
+    dest.write_text(NEWS_PATH.read_text(encoding="utf-8"), encoding="utf-8")
+    return 200, {"ok": True, "file": dest.name, "remaining": undo_remaining()}
+
+
+def restore_undo() -> tuple[int, dict]:
+    files = undo_paths()
+    if not files:
+        return 400, {"error": "Nothing to reverse."}
+    latest = files[-1]
+    NEWS_PATH.write_text(latest.read_text(encoding="utf-8"), encoding="utf-8")
+    latest.unlink(missing_ok=True)
+    return 200, {"ok": True, "remaining": undo_remaining()}
 
 
 SKIP_STREAM = (
@@ -775,6 +835,7 @@ def empty_item() -> dict:
         "timeline": "",
         "governmentParties": "",
         "otherParties": "",
+        "actionItem": "",
         "sourceUrl": "",
         "sourceType": "",
         "sourceFile": "",
@@ -1080,6 +1141,10 @@ class Handler(SimpleHTTPRequestHandler):
                 status, payload = 400, {"error": "Invalid draft id."}
             self.send_json(status, payload)
             return
+        if path == "/api/undo-status":
+            status, payload = undo_status()
+            self.send_json(status, payload)
+            return
         self.path = path
         super().do_GET()
 
@@ -1106,6 +1171,11 @@ class Handler(SimpleHTTPRequestHandler):
             elif path == "/api/delete":
                 fields = json.loads(body.decode("utf-8")) if body else {}
                 status, payload = delete_item(str(fields.get("id") or ""))
+            elif path == "/api/snapshot":
+                fields = json.loads(body.decode("utf-8")) if body else {}
+                status, payload = snapshot_board(fields)
+            elif path == "/api/undo":
+                status, payload = restore_undo()
             else:
                 self.send_error(404, "Not found")
                 return

@@ -49,6 +49,7 @@
     document.getElementById("field-timeline").value = item.timeline || "";
     document.getElementById("field-governmentParties").value = item.governmentParties || "";
     document.getElementById("field-otherParties").value = item.otherParties || "";
+    document.getElementById("field-actionItem").value = item.actionItem || "";
     document.getElementById("field-sourceUrl").value = item.sourceUrl || "";
     document.getElementById("field-date").value = item.date || "";
     document.getElementById("field-archived").checked = !!item.archived;
@@ -75,6 +76,7 @@
       timeline: form.timeline.value.trim(),
       governmentParties: form.governmentParties.value.trim(),
       otherParties: form.otherParties.value.trim(),
+      actionItem: form.actionItem.value.trim(),
       sourceUrl: form.sourceUrl.value.trim(),
       date: form.date.value,
       archived: form.archived.checked,
@@ -142,6 +144,23 @@
         setStatus(error.message || "Save failed.", true);
       });
   });
+
+  var todayNode = document.getElementById("today-date");
+  if (todayNode) {
+    function paintToday() {
+      todayNode.textContent = new Date().toLocaleDateString("en-US", {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+        year: "numeric"
+      });
+    }
+    paintToday();
+    window.setInterval(paintToday, 30000);
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) paintToday();
+    });
+  }
 
   var query = params();
   var draftId = query.get("draft");

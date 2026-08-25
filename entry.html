@@ -5,13 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>News entry · ʻEwa Development Plan News Room</title>
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
-  <link rel="stylesheet" href="css/newsroom.css?v=map7">
+  <link rel="stylesheet" href="css/newsroom.css?v=header1">
 </head>
 <body>
   <header class="site-header">
     <img class="logo" src="assets/ewa-dp-logo.png" alt="ʻEwa Development Plan">
     <div class="header-text">
       <h1>ʻEwa Development Plan News Room</h1>
+      <p id="today-date" class="today-date"></p>
     </div>
   </header>
 
@@ -91,6 +92,11 @@
       </label>
 
       <label>
+        Action item
+        <textarea name="actionItem" id="field-actionItem" rows="3" placeholder="What you or the team need to do. Fill this in yourself."></textarea>
+      </label>
+
+      <label>
         Date
         <input type="date" name="date" id="field-date">
       </label>
@@ -115,6 +121,6 @@
   <script src="vendor/leaflet/leaflet.js"></script>
   <script src="js/places.js?v=map7"></script>
   <script src="js/map.js?v=map7"></script>
-  <script src="js/entry.js?v=map7"></script>
+  <script src="js/entry.js?v=header1"></script>
 </body>
 </html>

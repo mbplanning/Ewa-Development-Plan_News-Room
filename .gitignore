@@ -6,3 +6,5 @@ desktop.ini
 __pycache__/
 uploads/
 data/drafts/
+data/undo/
+data/snapshots/
