@@ -781,6 +781,7 @@ def empty_item() -> dict:
         "archived": False,
         "needsReview": True,
         "documentText": "",
+        "geometry": None,
     }
 
 
@@ -893,6 +894,67 @@ def bool_flag(value) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "on", "yes"}
 
 
+def as_lnglat(value) -> list[float] | None:
+    if not isinstance(value, (list, tuple)) or len(value) < 2:
+        return None
+    try:
+        lng = float(value[0])
+        lat = float(value[1])
+    except (TypeError, ValueError):
+        return None
+    if not (-158.5 <= lng <= -157.5 and 21.2 <= lat <= 21.8):
+        return None
+    return [lng, lat]
+
+
+def clean_geometry(value, location_type: str):
+    if value in (None, "", {}, []):
+        return None
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(value, dict):
+        return None
+    coords = value.get("coordinates")
+    gtype = str(value.get("type") or "").strip()
+    expected = {"point": "Point", "road": "LineString", "region": "Polygon"}.get(location_type)
+    if expected:
+        gtype = expected
+    if gtype == "Point":
+        point = as_lnglat(coords)
+        if not point:
+            return None
+        return {"type": "Point", "coordinates": point, "approximate": bool(value.get("approximate")), "manual": bool(value.get("manual"))}
+    if gtype == "LineString":
+        if not isinstance(coords, list):
+            return None
+        line = [as_lnglat(pair) for pair in coords[:200]]
+        line = [pair for pair in line if pair]
+        if len(line) < 2:
+            return None
+        return {"type": "LineString", "coordinates": line, "approximate": bool(value.get("approximate")), "manual": bool(value.get("manual"))}
+    if gtype == "Polygon":
+        ring_src = coords
+        if isinstance(coords, list) and coords and isinstance(coords[0], list) and coords[0] and isinstance(coords[0][0], (int, float)):
+            ring_src = coords
+        elif isinstance(coords, list) and coords:
+            ring_src = coords[0]
+        else:
+            return None
+        ring = [as_lnglat(pair) for pair in ring_src[:200]]
+        ring = [pair for pair in ring if pair]
+        if len(ring) < 3:
+            return None
+        if ring[0] != ring[-1]:
+            ring.append(ring[0])
+        if len(ring) < 4:
+            return None
+        return {"type": "Polygon", "coordinates": [ring], "approximate": bool(value.get("approximate")), "manual": bool(value.get("manual"))}
+    return None
+
+
 def normalized_item(fields: dict, fallback: dict | None = None) -> dict:
     base = empty_item()
     if fallback:
@@ -908,16 +970,22 @@ def normalized_item(fields: dict, fallback: dict | None = None) -> dict:
     location_type = str(base.get("locationType") or "").strip().lower()
     if location_type in {"dot", "site"}:
         location_type = "point"
+    if location_type == "line":
+        location_type = "road"
+    if location_type == "shape":
+        location_type = "region"
     if location_type not in {"point", "road", "region"}:
-        location_type = ""
+        geom_kind = ""
+        if isinstance(base.get("geometry"), dict):
+            geom_kind = str(base.get("geometry").get("type") or "")
+        location_type = {"Point": "point", "LineString": "road", "Polygon": "region"}.get(geom_kind, "")
     base["locationType"] = location_type
+    if "geometry" in fields or base.get("geometry") is not None:
+        base["geometry"] = clean_geometry(base.get("geometry"), location_type)
     return base
 
 
 def save_item(fields: dict) -> tuple[int, dict]:
-    headline = str(fields.get("headline") or "").strip()
-    if not headline:
-        return 400, {"error": "Add a document title before saving."}
     fallback = None
     draft_id = str(fields.get("draftId") or "").strip()
     if draft_id:
@@ -932,6 +1000,8 @@ def save_item(fields: dict) -> tuple[int, dict]:
                 fallback = existing
                 break
     item = normalized_item(fields, fallback)
+    if not item.get("headline"):
+        return 400, {"error": "Add a document title before saving."}
     data = load_news()
     items = data.setdefault("items", [])
     for index, existing in enumerate(items):

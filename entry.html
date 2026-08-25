@@ -4,7 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>News entry · ʻEwa Development Plan News Room</title>
-  <link rel="stylesheet" href="css/newsroom.css?v=doc8">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="css/newsroom.css?v=map7">
 </head>
 <body>
   <header class="site-header">
@@ -53,6 +54,22 @@
         </label>
       </div>
 
+      <div class="entry-map-wrap">
+        <h3>Map this location</h3>
+        <p id="entry-map-hint" class="map-hint">Choose a location type, then click Redraw to place a dot, line, or shape.</p>
+        <div class="map-toolbar">
+          <button type="button" id="entry-map-done" disabled>Done</button>
+          <button type="button" id="entry-map-add-point" disabled>Add point</button>
+          <button type="button" id="entry-map-remove-point" disabled>Remove point</button>
+          <button type="button" id="entry-map-edit">Edit point</button>
+          <button type="button" id="entry-map-redraw">Redraw</button>
+          <button type="button" id="entry-map-finish">Finish</button>
+          <button type="button" id="entry-map-save">Save location</button>
+        </div>
+        <div id="entry-map" class="news-map"></div>
+        <input type="hidden" name="geometry" id="field-geometry">
+      </div>
+
       <label>
         4. News summary
         <textarea name="summary" id="field-summary" rows="3" placeholder="One sentence: what happened"></textarea>
@@ -95,6 +112,9 @@
     </form>
   </main>
 
-  <script src="js/entry.js?v=doc8"></script>
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="js/places.js?v=map7"></script>
+  <script src="js/map.js?v=map7"></script>
+  <script src="js/entry.js?v=map7"></script>
 </body>
 </html>

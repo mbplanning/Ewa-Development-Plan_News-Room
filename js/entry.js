@@ -10,6 +10,31 @@
     node.classList.toggle("is-error", !!isError);
   }
 
+  function parseGeometry(raw) {
+    if (!raw) return null;
+    if (typeof raw === "object") return raw;
+    try {
+      return JSON.parse(raw);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  var entryMap = null;
+
+  function syncMap(item) {
+    if (!entryMap || !item) return;
+    var working = {
+      id: item.id || document.getElementById("field-id").value || document.getElementById("field-draftId").value || "draft",
+      locationType: item.locationType || document.getElementById("field-locationType").value || "",
+      geometry: item.geometry || parseGeometry(document.getElementById("field-geometry").value)
+    };
+    entryMap.setItem(working);
+    window.setTimeout(function () {
+      entryMap.invalidate();
+    }, 50);
+  }
+
   function fillForm(item, extra) {
     extra = extra || {};
     document.getElementById("field-draftId").value = extra.draftId || "";
@@ -28,9 +53,11 @@
     document.getElementById("field-date").value = item.date || "";
     document.getElementById("field-archived").checked = !!item.archived;
     document.getElementById("field-documentText").value = item.documentText || extra.excerpt || "";
+    document.getElementById("field-geometry").value = item.geometry ? JSON.stringify(item.geometry) : "";
     if (extra.heading) {
       document.getElementById("entry-heading").textContent = extra.heading;
     }
+    syncMap(item);
   }
 
   function readForm() {
@@ -51,7 +78,8 @@
       sourceUrl: form.sourceUrl.value.trim(),
       date: form.date.value,
       archived: form.archived.checked,
-      documentText: form.documentText.value
+      documentText: form.documentText.value,
+      geometry: parseGeometry(form.geometry.value)
     };
   }
 
@@ -118,6 +146,28 @@
   var query = params();
   var draftId = query.get("draft");
   var itemId = query.get("id");
+  if (window.EwaNewsMap) {
+    entryMap = EwaNewsMap.mount({
+      container: "entry-map",
+      hint: "entry-map-hint",
+      redraw: "entry-map-redraw",
+      edit: "entry-map-edit",
+      done: "entry-map-done",
+      addPoint: "entry-map-add-point",
+      removePoint: "entry-map-remove-point",
+      finish: "entry-map-finish",
+      typeSelect: "field-locationType",
+      save: "entry-map-save",
+      persist: function (_id, geometry, locationType) {
+        document.getElementById("field-geometry").value = geometry ? JSON.stringify(geometry) : "";
+        if (locationType) document.getElementById("field-locationType").value = locationType;
+        return Promise.resolve();
+      }
+    });
+    window.addEventListener("resize", function () {
+      if (entryMap) entryMap.invalidate();
+    });
+  }
   if (draftId) {
     loadDraft(draftId).catch(function (error) {
       setStatus(error.message || "Could not open that upload.", true);

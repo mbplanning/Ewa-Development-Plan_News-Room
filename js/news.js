@@ -136,18 +136,33 @@
     });
   }
 
-  function renderList(data) {
-    var root = document.getElementById("news-list");
+  function locateItem(item) {
+    if (window.EwaPlaces && EwaPlaces.applyToItem) EwaPlaces.applyToItem(item);
+    return item;
+  }
+
+  function visibleItems(data) {
     var showArchived = document.getElementById("show-archived").checked;
     var searchNode = document.getElementById("news-search");
     var query = searchNode ? searchNode.value : "";
-    var items = newsItems(data, showArchived).filter(function (item) {
+    return newsItems(data, showArchived).filter(function (item) {
       return matchesSearch(item, query);
-    });
+    }).map(locateItem);
+  }
+
+  var selectedId = "";
+  var newsMap = null;
+
+  function renderList(data) {
+    var root = document.getElementById("news-list");
+    var items = visibleItems(data);
     if (!items.length) {
+      var searchNode = document.getElementById("news-search");
+      var query = searchNode ? searchNode.value : "";
       root.innerHTML = query.trim()
         ? '<li class="empty">No submitted news matches that search.</li>'
         : '<li class="empty">No news yet. Upload a PDF, Word, or text file to add an item.</li>';
+      if (newsMap) newsMap.showItems([]);
       return;
     }
     root.innerHTML = items.map(function (item) {
@@ -155,9 +170,11 @@
       if (locationLabel(item) && place) place = locationLabel(item) + " · " + place;
       else if (locationLabel(item)) place = locationLabel(item);
       var archived = item.archived ? '<span class="archived-tag">Archived</span>' : "";
+      var onMap = item.geometry ? " is-on-map" : "";
+      var open = item.id === selectedId ? " open" : "";
       return (
-        '<li class="news-item' + (item.archived ? " is-archived" : "") + '">' +
-          "<details>" +
+        '<li class="news-item' + (item.archived ? " is-archived" : "") + onMap + '" data-id="' + escapeHtml(item.id) + '">' +
+          "<details" + open + ">" +
             "<summary>" +
               "<span>" +
                 '<span class="headline">' + escapeHtml(item.headline) + "</span>" +
@@ -188,6 +205,13 @@
         "</li>"
       );
     }).join("");
+    if (newsMap) {
+      newsMap.showItems(items);
+      newsMap.invalidate();
+      if (selectedId && !items.some(function (item) { return item.id === selectedId; })) {
+        selectedId = "";
+      }
+    }
   }
 
   function setStatus(message, isError) {
@@ -217,6 +241,53 @@
   }
 
   var lastData = { items: [] };
+
+  function saveItemGeometry(itemId, geometry, locationType) {
+    var match = (lastData.items || []).filter(function (entry) {
+      return entry.id === itemId;
+    })[0];
+    if (match) {
+      match.geometry = geometry;
+      match.locationType = locationType;
+    }
+    return fetch("/api/news", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: itemId,
+        geometry: geometry,
+        locationType: locationType
+      })
+    }).then(function (response) {
+      return response.json().then(function (body) {
+        if (!response.ok) throw new Error(body.error || "Could not save that location.");
+        if (body.item) {
+          (lastData.items || []).forEach(function (entry, index) {
+            if (entry.id === body.item.id) lastData.items[index] = body.item;
+          });
+          var li = document.querySelector('.news-item[data-id="' + itemId + '"]');
+          if (li) li.classList.toggle("is-on-map", !!body.item.geometry);
+        }
+        return body;
+      });
+    });
+  }
+
+  function openNewsItem(id, fromMap) {
+    selectedId = id || "";
+    document.querySelectorAll("#news-list .news-item").forEach(function (li) {
+      var match = li.getAttribute("data-id") === selectedId;
+      li.classList.toggle("is-selected", match);
+      if (fromMap) {
+        var details = li.querySelector("details");
+        if (details) details.open = match;
+      }
+    });
+    if (fromMap && selectedId) {
+      var node = document.querySelector('.news-item[data-id="' + selectedId + '"]');
+      if (node) node.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }
 
   function loadAndRender() {
     return fetch("data/news.json", { cache: "no-store" })
@@ -309,6 +380,36 @@
     if (searchBox) {
       searchBox.addEventListener("input", function () {
         renderList(lastData);
+      });
+    }
+    document.getElementById("news-list").addEventListener("toggle", function (event) {
+      var details = event.target;
+      if (!details || details.tagName !== "DETAILS" || !details.open) return;
+      var li = details.closest(".news-item");
+      if (!li) return;
+      selectedId = li.getAttribute("data-id") || "";
+      openNewsItem(selectedId, false);
+      if (newsMap) newsMap.select(selectedId, false);
+    }, true);
+    if (globalThis.EwaNewsMap) {
+      newsMap = EwaNewsMap.mount({
+        container: "news-map",
+        hint: "map-hint",
+        redraw: "map-redraw",
+        edit: "map-edit",
+        done: "map-done",
+        addPoint: "map-add-point",
+        removePoint: "map-remove-point",
+        finish: "map-finish",
+        save: "map-save",
+        typeSelect: "map-location-type",
+        persist: saveItemGeometry,
+        onSelect: function (id, fromMap) {
+          openNewsItem(id, fromMap);
+        }
+      });
+      window.addEventListener("resize", function () {
+        if (newsMap) newsMap.invalidate();
       });
     }
   }

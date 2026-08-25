@@ -4,7 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ʻEwa Development Plan News Room</title>
-  <link rel="stylesheet" href="css/newsroom.css?v=norelated">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="css/newsroom.css?v=map7">
 </head>
 <body>
   <header class="site-header">
@@ -38,9 +39,37 @@
       </label>
       <ul id="news-list"></ul>
     </section>
+    <aside class="map-column" aria-label="Location map">
+      <div class="map-heading">
+        <h2>Map</h2>
+        <p id="map-hint" class="map-hint">Open a news item to move or redraw its location.</p>
+      </div>
+      <div class="map-toolbar">
+        <label class="map-type-label">
+          Mark as
+          <select id="map-location-type">
+            <option value="">Not identified</option>
+            <option value="point">Dot / site</option>
+            <option value="road">Line / road</option>
+            <option value="region">Shape / region</option>
+          </select>
+        </label>
+        <button type="button" id="map-done" disabled>Done</button>
+        <button type="button" id="map-add-point" disabled>Add point</button>
+        <button type="button" id="map-remove-point" disabled>Remove point</button>
+        <button type="button" id="map-edit" disabled>Edit point</button>
+        <button type="button" id="map-redraw" disabled>Redraw</button>
+        <button type="button" id="map-finish">Finish</button>
+        <button type="button" id="map-save" disabled>Save location</button>
+      </div>
+      <div id="news-map" class="news-map"></div>
+    </aside>
   </main>
 
   <script src="data/projects.js"></script>
-  <script src="js/news.js?v=norelated"></script>
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="js/places.js?v=map7"></script>
+  <script src="js/map.js?v=map7"></script>
+  <script src="js/news.js?v=map7"></script>
 </body>
 </html>
