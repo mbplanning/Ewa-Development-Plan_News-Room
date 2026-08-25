@@ -32,6 +32,12 @@
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   }
 
+  function monthYearLabel(value) {
+    var text = String(value || "").trim();
+    if (!text) return "";
+    return formatDate(text);
+  }
+
   function display(value) {
     var text = String(value || "").trim();
     return text || "Not identified";
@@ -66,7 +72,8 @@
             summary: update.summary || project.whatsNew || "",
             place: project.location || "",
             source: source ? (source.organization || source.title || "") : "",
-            timeline: "",
+            beginDate: "",
+            endDate: "",
             governmentParties: "",
             otherParties: "",
             actionItem: "",
@@ -136,7 +143,8 @@
       item.summary,
       item.source,
       item.place,
-      item.timeline,
+      item.beginDate,
+      item.endDate,
       item.governmentParties,
       item.otherParties,
       item.actionItem,
@@ -168,8 +176,312 @@
     }).map(locateItem);
   }
 
+  function toYearMonth(value) {
+    var text = String(value || "").trim();
+    if (/^\d{4}-(0[1-9]|1[0-2])$/.test(text)) return text;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text.slice(0, 7);
+    return "";
+  }
+
+  function monthIndex(value) {
+    var ym = toYearMonth(value);
+    if (!ym) return null;
+    return Number(ym.slice(0, 4)) * 12 + (Number(ym.slice(5, 7)) - 1);
+  }
+
+  function monthFromIndex(index) {
+    var year = Math.floor(index / 12);
+    var month = (index % 12) + 1;
+    return year + "-" + (month < 10 ? "0" : "") + month;
+  }
+
+  function itemTimeMark(item) {
+    var begin = toYearMonth(item.beginDate);
+    var end = toYearMonth(item.endDate);
+    var stamp = toYearMonth(item.date);
+    if (begin && end) {
+      if (monthIndex(end) < monthIndex(begin)) {
+        var swap = begin;
+        begin = end;
+        end = swap;
+      }
+      return {
+        id: item.id,
+        headline: item.headline || "Untitled",
+        kind: begin === end ? "point" : "span",
+        start: begin,
+        end: end
+      };
+    }
+    if (begin) return { id: item.id, headline: item.headline || "Untitled", kind: "point", start: begin, end: begin };
+    if (end) return { id: item.id, headline: item.headline || "Untitled", kind: "point", start: end, end: end };
+    if (stamp) return { id: item.id, headline: item.headline || "Untitled", kind: "point", start: stamp, end: stamp };
+    return null;
+  }
+
+  function assignLanes(marks) {
+    var lanes = [];
+    marks.sort(function (a, b) {
+      return monthIndex(a.start) - monthIndex(b.start) || monthIndex(a.end) - monthIndex(b.end);
+    });
+    marks.forEach(function (mark) {
+      var start = monthIndex(mark.start);
+      var end = monthIndex(mark.end);
+      var lane = 0;
+      for (; lane < lanes.length; lane += 1) {
+        if (lanes[lane] < start) break;
+      }
+      if (lane === lanes.length) lanes.push(end);
+      else lanes[lane] = end;
+      mark.lane = lane;
+    });
+    return marks;
+  }
+
+  function timelineTicks(minIndex, maxIndex) {
+    var span = maxIndex - minIndex;
+    var step = 1;
+    if (span > 48) step = 12;
+    else if (span > 24) step = 6;
+    else if (span > 12) step = 3;
+    var ticks = [];
+    var index = minIndex;
+    while (index <= maxIndex) {
+      var atStart = (index - minIndex) % step === 0;
+      if (atStart || index === minIndex || index === maxIndex) {
+        var date = new Date(Math.floor(index / 12), index % 12, 1);
+        var label = step >= 12
+          ? (index % 12 === 0 || index === minIndex || index === maxIndex
+            ? String(date.getFullYear())
+            : "")
+          : date.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
+        ticks.push({ index: index, label: label });
+      }
+      index += 1;
+    }
+    return ticks;
+  }
+
+  function renderTimeline(items) {
+    var root = document.getElementById("news-timeline");
+    var rangeNode = document.getElementById("timeline-range");
+    if (!root) return;
+    var marks = assignLanes((items || []).map(itemTimeMark).filter(Boolean));
+    if (!marks.length) {
+      root.innerHTML = '<p class="timeline-empty">No month/year dates to plot yet. Add a begin date, end date, or article date.</p>';
+      if (rangeNode) {
+        rangeNode.textContent = "Articles with a month/year appear here. The range grows as news is added.";
+      }
+      return;
+    }
+    var dataMin = marks.reduce(function (min, mark) {
+      return Math.min(min, monthIndex(mark.start));
+    }, monthIndex(marks[0].start));
+    var dataMax = marks.reduce(function (max, mark) {
+      return Math.max(max, monthIndex(mark.end));
+    }, monthIndex(marks[0].end));
+    var minIndex = dataMin;
+    var maxIndex = dataMax;
+    if (minIndex === maxIndex) {
+      minIndex -= 6;
+      maxIndex += 6;
+    } else {
+      minIndex -= 1;
+      maxIndex += 1;
+    }
+    var span = maxIndex - minIndex || 1;
+    var laneCount = marks.reduce(function (max, mark) {
+      return Math.max(max, mark.lane + 1);
+    }, 1);
+    if (rangeNode) {
+      rangeNode.textContent = dataMin === dataMax
+        ? formatDate(monthFromIndex(dataMin))
+        : formatDate(monthFromIndex(dataMin)) + " – " + formatDate(monthFromIndex(dataMax));
+    }
+    function leftPct(index) {
+      return ((index - minIndex) / span) * 100;
+    }
+    var ticks = timelineTicks(minIndex, maxIndex).map(function (tick) {
+      if (!tick.label) return "";
+      return (
+        '<span class="timeline-tick" style="left:' + leftPct(tick.index).toFixed(2) + '%">' +
+          escapeHtml(tick.label) +
+        "</span>"
+      );
+    }).join("");
+    var laneHtml = marks.map(function (mark) {
+      var start = monthIndex(mark.start);
+      var end = monthIndex(mark.end);
+      var left = leftPct(start);
+      var width = mark.kind === "point" ? 0 : Math.max(leftPct(end) - left, 1.2);
+      var top = mark.lane * 1.35;
+      var selected = mark.id === selectedId ? " is-selected" : "";
+      var label = mark.kind === "span"
+        ? monthYearLabel(mark.start) + " – " + monthYearLabel(mark.end)
+        : monthYearLabel(mark.start);
+      var inner = mark.kind === "span"
+        ? '<span class="timeline-bar"></span><span class="timeline-dot is-start"></span><span class="timeline-dot is-end"></span>'
+        : '<span class="timeline-dot"></span>';
+      return (
+        '<button type="button" class="timeline-mark is-' + mark.kind + selected + '" data-id="' + escapeHtml(mark.id) + '"' +
+          ' style="left:' + left.toFixed(2) + "%;width:" + (mark.kind === "point" ? "0.72rem" : width.toFixed(2) + "%") + ";top:" + top + 'rem"' +
+          ' aria-label="' + escapeHtml(mark.headline) + '">' +
+          inner +
+          '<span class="timeline-tip">' + escapeHtml(mark.headline) + "<br>" + escapeHtml(label) + "</span>" +
+        "</button>"
+      );
+    }).join("");
+    root.innerHTML =
+      '<div class="timeline-lanes" style="height:' + (laneCount * 1.35 + 0.2) + 'rem">' + laneHtml + "</div>" +
+      '<div class="timeline-axis">' + ticks + "</div>";
+  }
+
   var selectedId = "";
   var newsMap = null;
+  var pageStart = 0;
+  var pageCount = 0;
+  var resizeTimer = 0;
+
+  function itemMarkup(item, forceClosed) {
+    var place = item.place || "";
+    if (locationLabel(item) && place) place = locationLabel(item) + " · " + place;
+    else if (locationLabel(item)) place = locationLabel(item);
+    var archived = item.archived ? '<span class="archived-tag">Archived</span>' : "";
+    var onMap = item.geometry ? " is-on-map" : "";
+    var hasDates = String(item.beginDate || "").trim() || String(item.endDate || "").trim();
+    var dateDot = hasDates ? '<span class="date-dot" title="Has a begin or end date"></span>' : "";
+    var open = !forceClosed && item.id === selectedId ? " open" : "";
+    return (
+      '<li class="news-item' + (item.archived ? " is-archived" : "") + onMap + (hasDates ? " has-dates" : "") + '" data-id="' + escapeHtml(item.id) + '">' +
+        "<details" + open + ">" +
+          "<summary>" +
+            actionFlag(item) +
+            "<span>" +
+              '<span class="headline">' + escapeHtml(item.headline) + "</span>" +
+              dateDot +
+              archived +
+              "<time>" + escapeHtml(formatDate(item.date)) + "</time>" +
+            "</span>" +
+          "</summary>" +
+          '<div class="body">' +
+            '<dl class="item-fields">' +
+              fieldRow("Summary", item.summary) +
+              fieldRow("Location", place) +
+              fieldRow("Source", item.source) +
+              fieldRow("Begin date", monthYearLabel(item.beginDate)) +
+              fieldRow("End date", monthYearLabel(item.endDate)) +
+              fieldRow("Parties", parties(item)) +
+              fieldRow("Action item", item.actionItem) +
+              (item.documentText
+                ? '<div class="field document-field"><dt>From this document</dt><dd><pre class="saved-document">' + escapeHtml(item.documentText) + "</pre></dd></div>"
+                : "") +
+            "</dl>" +
+            '<div class="item-actions">' +
+              '<a href="entry.html?id=' + encodeURIComponent(item.id) + '">Edit</a>' +
+              '<button type="button" class="archive-btn" data-id="' + escapeHtml(item.id) + '" data-archived="' + (item.archived ? "0" : "1") + '">' +
+                (item.archived ? "Unarchive" : "Archive") +
+              "</button>" +
+              '<button type="button" class="delete-btn" data-id="' + escapeHtml(item.id) + '">Delete this post</button>' +
+            "</div>" +
+          "</div>" +
+        "</details>" +
+      "</li>"
+    );
+  }
+
+  function pagerMarkup(hasPrev, hasNext) {
+    return (
+      '<li class="news-pager">' +
+        '<button type="button" class="page-prev"' + (hasPrev ? "" : " disabled") + ">Previous page</button>" +
+        '<button type="button" class="page-next"' + (hasNext ? "" : " disabled") + ">Next page</button>" +
+      "</li>"
+    );
+  }
+
+  function listBudget() {
+    var map = document.getElementById("news-map");
+    var list = document.getElementById("news-list");
+    if (!map || !list) return 320;
+    var mapBox = map.getBoundingClientRect();
+    var listBox = list.getBoundingClientRect();
+    var sideBySide = mapBox.top < listBox.top + 80 && mapBox.bottom > listBox.top + 80;
+    if (sideBySide) return Math.max(140, Math.floor(mapBox.bottom - listBox.top));
+    return Math.max(220, Math.min(Math.floor(window.innerHeight * 0.42), 420));
+  }
+
+  function countFit(items, start, budget) {
+    var remaining = items.length - start;
+    if (remaining <= 0) return 0;
+    var list = document.getElementById("news-list");
+    var probe = document.createElement("ul");
+    probe.className = "news-list-probe";
+    probe.style.cssText = "position:absolute;visibility:hidden;left:-9999px;top:0;list-style:none;margin:0;padding:0;width:" +
+      Math.max(list ? list.clientWidth : 320, 200) + "px";
+    document.body.appendChild(probe);
+    function heightFor(n) {
+      probe.innerHTML = items.slice(start, start + n).map(function (item) {
+        return itemMarkup(item, true);
+      }).join("") + pagerMarkup(false, false);
+      return probe.offsetHeight;
+    }
+    var lo = 1;
+    var hi = remaining;
+    var best = 1;
+    while (lo <= hi) {
+      var mid = (lo + hi) >> 1;
+      if (heightFor(mid) <= budget) {
+        best = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    probe.remove();
+    return best;
+  }
+
+  function pageSlice(items, start) {
+    var rest = items.length - start;
+    if (rest <= 0) return { start: start, count: 0, hasPrev: start > 0, hasNext: false };
+    var budget = listBudget();
+    var n = countFit(items, start, budget);
+    if (n < 1) n = 1;
+    if (start + n > items.length) n = rest;
+    return { start: start, count: n, hasPrev: start > 0, hasNext: start + n < items.length };
+  }
+
+  function jumpToItemPage(items, id) {
+    var index = -1;
+    items.forEach(function (item, i) {
+      if (item.id === id) index = i;
+    });
+    if (index < 0) return;
+    if (index >= pageStart && index < pageStart + Math.max(pageCount, 1)) return;
+    var start = 0;
+    while (start < items.length) {
+      var slice = pageSlice(items, start);
+      var n = slice.count || 1;
+      if (index < start + n) {
+        pageStart = start;
+        return;
+      }
+      start += n;
+    }
+    pageStart = index;
+  }
+
+  function previousPageStart(items, currentStart) {
+    if (currentStart <= 0) return 0;
+    var start = 0;
+    var prev = 0;
+    while (start < currentStart) {
+      var n = pageSlice(items, start).count || 1;
+      if (start + n >= currentStart) return start;
+      prev = start;
+      start += n;
+    }
+    return prev;
+  }
 
   function renderList(data) {
     var root = document.getElementById("news-list");
@@ -177,54 +489,21 @@
     if (!items.length) {
       var searchNode = document.getElementById("news-search");
       var query = searchNode ? searchNode.value : "";
-      root.innerHTML = query.trim()
+      pageStart = 0;
+      pageCount = 0;
+      root.innerHTML = (query.trim()
         ? '<li class="empty">No submitted news matches that search.</li>'
-        : '<li class="empty">No news yet. Upload a PDF, Word, or text file to add an item.</li>';
+        : '<li class="empty">No news yet. Upload a PDF, Word, or text file to add an item.</li>') +
+        pagerMarkup(false, false);
       if (newsMap) newsMap.showItems([]);
+      renderTimeline([]);
       return;
     }
-    root.innerHTML = items.map(function (item) {
-      var place = item.place || "";
-      if (locationLabel(item) && place) place = locationLabel(item) + " · " + place;
-      else if (locationLabel(item)) place = locationLabel(item);
-      var archived = item.archived ? '<span class="archived-tag">Archived</span>' : "";
-      var onMap = item.geometry ? " is-on-map" : "";
-      var open = item.id === selectedId ? " open" : "";
-      return (
-        '<li class="news-item' + (item.archived ? " is-archived" : "") + onMap + '" data-id="' + escapeHtml(item.id) + '">' +
-          "<details" + open + ">" +
-            "<summary>" +
-              actionFlag(item) +
-              "<span>" +
-                '<span class="headline">' + escapeHtml(item.headline) + "</span>" +
-                archived +
-                "<time>" + escapeHtml(formatDate(item.date)) + "</time>" +
-              "</span>" +
-            "</summary>" +
-            '<div class="body">' +
-              '<dl class="item-fields">' +
-                fieldRow("Summary", item.summary) +
-                fieldRow("Location", place) +
-                fieldRow("Source", item.source) +
-                fieldRow("Timeline", item.timeline) +
-                fieldRow("Parties", parties(item)) +
-                fieldRow("Action item", item.actionItem) +
-                (item.documentText
-                  ? '<div class="field document-field"><dt>From this document</dt><dd><pre class="saved-document">' + escapeHtml(item.documentText) + "</pre></dd></div>"
-                  : "") +
-              "</dl>" +
-              '<div class="item-actions">' +
-                '<a href="entry.html?id=' + encodeURIComponent(item.id) + '">Edit</a>' +
-                '<button type="button" class="archive-btn" data-id="' + escapeHtml(item.id) + '" data-archived="' + (item.archived ? "0" : "1") + '">' +
-                  (item.archived ? "Unarchive" : "Archive") +
-                "</button>" +
-                '<button type="button" class="delete-btn" data-id="' + escapeHtml(item.id) + '">Delete this post</button>' +
-              "</div>" +
-            "</div>" +
-          "</details>" +
-        "</li>"
-      );
-    }).join("");
+    if (pageStart >= items.length) pageStart = 0;
+    var slice = pageSlice(items, pageStart);
+    pageCount = slice.count;
+    var pageItems = items.slice(slice.start, slice.start + slice.count);
+    root.innerHTML = pageItems.map(itemMarkup).join("") + pagerMarkup(slice.hasPrev, slice.hasNext);
     if (newsMap) {
       newsMap.showItems(items);
       newsMap.invalidate();
@@ -232,6 +511,7 @@
         selectedId = "";
       }
     }
+    renderTimeline(items);
   }
 
   function setStatus(message, isError) {
@@ -318,6 +598,11 @@
 
   function openNewsItem(id, fromMap) {
     selectedId = id || "";
+    if (fromMap && lastData) {
+      var before = pageStart;
+      jumpToItemPage(visibleItems(lastData), selectedId);
+      if (pageStart !== before) renderList(lastData);
+    }
     document.querySelectorAll("#news-list .news-item").forEach(function (li) {
       var match = li.getAttribute("data-id") === selectedId;
       li.classList.toggle("is-selected", match);
@@ -325,6 +610,9 @@
         var details = li.querySelector("details");
         if (details) details.open = match;
       }
+    });
+    document.querySelectorAll(".timeline-mark").forEach(function (mark) {
+      mark.classList.toggle("is-selected", mark.getAttribute("data-id") === selectedId);
     });
     if (fromMap && selectedId) {
       var node = document.querySelector('.news-item[data-id="' + selectedId + '"]');
@@ -436,6 +724,22 @@
           });
         return;
       }
+      var nextPage = event.target.closest(".page-next");
+      if (nextPage) {
+        event.preventDefault();
+        if (nextPage.disabled) return;
+        pageStart = pageStart + Math.max(pageCount, 1);
+        renderList(lastData);
+        return;
+      }
+      var prevPage = event.target.closest(".page-prev");
+      if (prevPage) {
+        event.preventDefault();
+        if (prevPage.disabled) return;
+        pageStart = previousPageStart(visibleItems(lastData), pageStart);
+        renderList(lastData);
+        return;
+      }
       var deleteBtn = event.target.closest(".delete-btn");
       if (deleteBtn) {
         if (!window.confirm("Delete this post? This cannot be undone.")) return;
@@ -482,7 +786,19 @@
           setStatus(error.message || "Could not update archive.", true);
         });
     });
+    var timelineRoot = document.getElementById("news-timeline");
+    if (timelineRoot) {
+      timelineRoot.addEventListener("click", function (event) {
+        var mark = event.target.closest(".timeline-mark");
+        if (!mark) return;
+        var itemId = mark.getAttribute("data-id") || "";
+        if (!itemId) return;
+        openNewsItem(itemId, true);
+        if (newsMap) newsMap.select(itemId, true);
+      });
+    }
     document.getElementById("show-archived").addEventListener("change", function () {
+      pageStart = 0;
       renderList(lastData);
     });
     var saveBoard = document.getElementById("save-board");
@@ -538,6 +854,7 @@
     var searchBox = document.getElementById("news-search");
     if (searchBox) {
       searchBox.addEventListener("input", function () {
+        pageStart = 0;
         renderList(lastData);
       });
     }
@@ -569,6 +886,10 @@
       });
       window.addEventListener("resize", function () {
         if (newsMap) newsMap.invalidate();
+        window.clearTimeout(resizeTimer);
+        resizeTimer = window.setTimeout(function () {
+          renderList(lastData);
+        }, 150);
       });
     }
   }
@@ -576,7 +897,11 @@
   document.addEventListener("DOMContentLoaded", function () {
     startTodayDate();
     bindUploads();
-    loadAndRender();
+    loadAndRender().then(function () {
+      window.setTimeout(function () {
+        renderList(lastData);
+      }, 120);
+    });
     if (params().get("saved") === "1") {
       setStatus("Saved to the News Room.");
       history.replaceState({}, "", "index.html");

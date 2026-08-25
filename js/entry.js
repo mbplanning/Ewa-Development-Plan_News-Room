@@ -35,6 +35,11 @@
     }, 50);
   }
 
+  function monthInputValue(value) {
+    var text = String(value || "").trim();
+    return /^\d{4}-(0[1-9]|1[0-2])$/.test(text) ? text : "";
+  }
+
   function fillForm(item, extra) {
     extra = extra || {};
     document.getElementById("field-draftId").value = extra.draftId || "";
@@ -46,7 +51,8 @@
     document.getElementById("field-place").value = item.place || "";
     document.getElementById("field-locationType").value = item.locationType || "";
     document.getElementById("field-summary").value = item.summary || "";
-    document.getElementById("field-timeline").value = item.timeline || "";
+    document.getElementById("field-beginDate").value = monthInputValue(item.beginDate);
+    document.getElementById("field-endDate").value = monthInputValue(item.endDate);
     document.getElementById("field-governmentParties").value = item.governmentParties || "";
     document.getElementById("field-otherParties").value = item.otherParties || "";
     document.getElementById("field-actionItem").value = item.actionItem || "";
@@ -73,7 +79,8 @@
       place: form.place.value.trim(),
       locationType: form.locationType.value,
       summary: form.summary.value.trim(),
-      timeline: form.timeline.value.trim(),
+      beginDate: form.beginDate.value.trim(),
+      endDate: form.endDate.value.trim(),
       governmentParties: form.governmentParties.value.trim(),
       otherParties: form.otherParties.value.trim(),
       actionItem: form.actionItem.value.trim(),

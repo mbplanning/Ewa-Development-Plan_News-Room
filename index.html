@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ʻEwa Development Plan News Room</title>
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
-  <link rel="stylesheet" href="css/newsroom.css?v=header1">
+  <link rel="stylesheet" href="css/newsroom.css?v=page3">
 </head>
 <body>
   <header class="site-header">
@@ -29,6 +29,7 @@
     </form>
   </header>
 
+  <div class="board">
   <main class="page">
     <section class="news-column" aria-label="Recent news">
       <div class="news-heading">
@@ -70,11 +71,19 @@
       <div id="news-map" class="news-map"></div>
     </aside>
   </main>
+  <section class="timeline-band" aria-label="News timeline">
+    <div class="timeline-heading">
+      <h2>Timeline</h2>
+      <p id="timeline-range" class="timeline-hint">Articles with a month/year appear here. The range grows as news is added.</p>
+    </div>
+    <div id="news-timeline" class="timeline-chart"></div>
+  </section>
+  </div>
 
   <script src="data/projects.js"></script>
   <script src="vendor/leaflet/leaflet.js"></script>
   <script src="js/places.js?v=map7"></script>
   <script src="js/map.js?v=map7"></script>
-  <script src="js/news.js?v=header1"></script>
+  <script src="js/news.js?v=page3"></script>
 </body>
 </html>

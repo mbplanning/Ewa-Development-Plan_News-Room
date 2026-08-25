@@ -748,21 +748,100 @@ def extract_place(text: str) -> tuple[str, str]:
     return "", ""
 
 
-def extract_timeline(text: str) -> str:
-    body = re.sub(r"\s+", " ", text or "")
-    patterns = [
-        r"(?:expected completion|completion(?: date| scheduled)?|complete(?:d)? by|occupancy|opening)[^.]{0,90}",
-        r"decision due [^.]{0,60}",
-        r"scheduled(?: for)? [^.]{0,70}",
-        r"Q[1-4]\s+20\d{2}",
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, body, re.I)
-        if match:
-            found = match.group(0).strip(" ,;:-")
-            if len(found) >= 6:
-                return found[:180]
+MONTH_WORDS = {
+    "january": "01", "jan": "01",
+    "february": "02", "feb": "02",
+    "march": "03", "mar": "03",
+    "april": "04", "apr": "04",
+    "may": "05",
+    "june": "06", "jun": "06",
+    "july": "07", "jul": "07",
+    "august": "08", "aug": "08",
+    "september": "09", "sept": "09", "sep": "09",
+    "october": "10", "oct": "10",
+    "november": "11", "nov": "11",
+    "december": "12", "dec": "12",
+}
+MONTH_WORD_RE = r"January|February|March|April|May|June|July|August|September|October|November|December|Jan\.?|Feb\.?|Mar\.?|Apr\.?|Jun\.?|Jul\.?|Aug\.?|Sept\.?|Sep\.?|Oct\.?|Nov\.?|Dec\.?"
+MONTH_YEAR_CHUNK = (
+    r"(?:(?:" + MONTH_WORD_RE + r")\s+20\d{2}"
+    r"|20\d{2}-(?:0[1-9]|1[0-2])(?:-\d{2})?"
+    r"|(?:0?[1-9]|1[0-2])/20\d{2}"
+    r"|Q[1-4]\s*20\d{2})"
+)
+
+
+def month_number(token: str) -> str:
+    raw = re.sub(r"[.]", "", (token or "").strip().lower())
+    if raw in MONTH_WORDS:
+        return MONTH_WORDS[raw]
+    if raw.isdigit() and 1 <= int(raw) <= 12:
+        return f"{int(raw):02d}"
     return ""
+
+
+def parse_month_year(chunk: str, role: str = "begin") -> str:
+    text = re.sub(r"\s+", " ", (chunk or "")).strip(" ,;:-")
+    if not text:
+        return ""
+    quarter = re.fullmatch(r"Q([1-4])\s*(20\d{2})", text, re.I)
+    if quarter:
+        number = int(quarter.group(1))
+        year = quarter.group(2)
+        month = (number - 1) * 3 + 1 if role == "begin" else number * 3
+        return f"{year}-{month:02d}"
+    named = re.fullmatch(rf"({MONTH_WORD_RE})\s+(20\d{{2}})", text, re.I)
+    if named:
+        month = month_number(named.group(1))
+        return f"{named.group(2)}-{month}" if month else ""
+    iso = re.fullmatch(r"(20\d{2})-(0[1-9]|1[0-2])(?:-\d{2})?", text)
+    if iso:
+        return f"{iso.group(1)}-{iso.group(2)}"
+    slash = re.fullmatch(r"(0?[1-9]|1[0-2])/(20\d{2})", text)
+    if slash:
+        return f"{slash.group(2)}-{int(slash.group(1)):02d}"
+    return ""
+
+
+def clean_month_year(value) -> str:
+    text = str(value or "").strip()
+    return parse_month_year(text, "begin")
+
+
+def extract_begin_end(text: str) -> tuple[str, str]:
+    body = re.sub(r"\s+", " ", text or "")
+    begin = ""
+    end = ""
+    range_match = re.search(
+        rf"(?:from|between)\s+({MONTH_YEAR_CHUNK})\s+(?:to|through|until|and)\s+({MONTH_YEAR_CHUNK})",
+        body,
+        re.I,
+    )
+    if not range_match:
+        range_match = re.search(
+            rf"({MONTH_YEAR_CHUNK})\s+(?:to|through|until|–|—|-)\s+({MONTH_YEAR_CHUNK})",
+            body,
+            re.I,
+        )
+    if range_match:
+        begin = parse_month_year(range_match.group(1), "begin")
+        end = parse_month_year(range_match.group(2), "end")
+        return begin, end
+    begin_match = re.search(
+        rf"(?:begin(?:s|ning)?|start(?:s|ing|ed)?|groundbreaking)(?:\s+\w+){{0,8}}?(?:\s+(?:in|on|of))?\s+({MONTH_YEAR_CHUNK})",
+        body,
+        re.I,
+    )
+    if begin_match:
+        begin = parse_month_year(begin_match.group(1), "begin")
+    end_match = re.search(
+        rf"(?:expected completion|completion(?: date)?|complete(?:d)?(?:\s+by)?|finish(?:ed|es)?|opening|occupancy|deadline)(?:\s+\w+){{0,8}}?(?:\s+(?:by|in|on|of))?\s+({MONTH_YEAR_CHUNK})",
+        body,
+        re.I,
+    )
+    if end_match:
+        end = parse_month_year(end_match.group(1), "end")
+    return begin, end
 
 
 def name_in_text(hay: str, name: str) -> bool:
@@ -832,7 +911,8 @@ def empty_item() -> dict:
         "place": "",
         "locationType": "",
         "summary": "",
-        "timeline": "",
+        "beginDate": "",
+        "endDate": "",
         "governmentParties": "",
         "otherParties": "",
         "actionItem": "",
@@ -862,7 +942,9 @@ def extract_fields(text: str, filename: str, links: list[str], extra: dict[str, 
     item["place"] = place
     item["locationType"] = location_type
     item["summary"] = one_sentence(text)
-    item["timeline"] = extract_timeline(text)
+    begin, end = extract_begin_end(text)
+    item["beginDate"] = begin
+    item["endDate"] = end
     item["governmentParties"] = gov
     item["otherParties"] = other
     item["sourceUrl"] = (extra.get("sourceUrl") or extra.get("link") or "").strip() or (links[0] if links else "")
@@ -1024,6 +1106,8 @@ def normalized_item(fields: dict, fallback: dict | None = None) -> dict:
         if key in fields and fields[key] is not None:
             base[key] = fields[key]
     base["headline"] = str(base.get("headline") or "").strip()
+    base["beginDate"] = clean_month_year(base.get("beginDate"))
+    base["endDate"] = clean_month_year(base.get("endDate"))
     base["archived"] = bool_flag(base.get("archived"))
     base["needsReview"] = False
     if not base.get("id"):

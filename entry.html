@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>News entry · ʻEwa Development Plan News Room</title>
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
-  <link rel="stylesheet" href="css/newsroom.css?v=header1">
+  <link rel="stylesheet" href="css/newsroom.css?v=dates1">
 </head>
 <body>
   <header class="site-header">
@@ -76,10 +76,16 @@
         <textarea name="summary" id="field-summary" rows="3" placeholder="One sentence: what happened"></textarea>
       </label>
 
-      <label>
-        5. Timeline / expected completion
-        <input type="text" name="timeline" id="field-timeline" placeholder="Leave blank if not identified">
-      </label>
+      <div class="field-row dates">
+        <label>
+          5. Begin date
+          <input type="month" name="beginDate" id="field-beginDate">
+        </label>
+        <label>
+          End date
+          <input type="month" name="endDate" id="field-endDate">
+        </label>
+      </div>
 
       <label>
         6. Government parties
@@ -121,6 +127,6 @@
   <script src="vendor/leaflet/leaflet.js"></script>
   <script src="js/places.js?v=map7"></script>
   <script src="js/map.js?v=map7"></script>
-  <script src="js/entry.js?v=header1"></script>
+  <script src="js/entry.js?v=dates1"></script>
 </body>
 </html>
