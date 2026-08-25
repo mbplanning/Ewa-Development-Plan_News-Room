@@ -3,6 +3,10 @@
     return new URLSearchParams(window.location.search);
   }
 
+  function isHostedView() {
+    return /\.github\.io$/i.test(window.location.hostname);
+  }
+
   function escapeHtml(value) {
     return String(value || "")
       .replace(/&/g, "&amp;")
@@ -678,6 +682,7 @@
   }
 
   function refreshUndoButton() {
+    if (isHostedView()) return Promise.resolve();
     return fetch("/api/undo-status", { cache: "no-store" })
       .then(function (response) {
         return response.json().then(function (body) {
@@ -879,7 +884,7 @@
         finish: "map-finish",
         save: "map-save",
         typeSelect: "map-location-type",
-        persist: saveItemGeometry,
+        persist: isHostedView() ? undefined : saveItemGeometry,
         onSelect: function (id, fromMap) {
           openNewsItem(id, fromMap);
         }
@@ -895,6 +900,7 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
+    if (isHostedView()) document.body.classList.add("is-hosted-view");
     startTodayDate();
     bindUploads();
     loadAndRender().then(function () {

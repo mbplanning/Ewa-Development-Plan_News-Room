@@ -78,6 +78,14 @@ html, body {
   cursor: default;
 }
 
+body.is-hosted-view .upload-box,
+body.is-hosted-view .header-tools,
+body.is-hosted-view .item-actions,
+body.is-hosted-view .map-toolbar,
+body.is-hosted-view .action-done-label {
+  display: none;
+}
+
 .page {
   display: flex;
   align-items: flex-start;
